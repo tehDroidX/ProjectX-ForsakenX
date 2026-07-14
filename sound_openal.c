@@ -121,14 +121,6 @@ bool sound_init( void )
 	if(!Device)
 		return false;
 
-	/* log which device was actually opened (the enumeration above only lists candidates) */
-	{
-		ALCint freq = 0;
-		alcGetIntegerv( Device, ALC_FREQUENCY, 1, &freq );
-		DebugPrintf("openal: opened device='%s' freq=%d\n",
-			alcGetString(Device, ALC_DEVICE_SPECIFIER), freq);
-	}
-
 	Context = alcCreateContext(Device,NULL);
 	if(!Context)
 		return false;
@@ -293,7 +285,7 @@ sound_buffer_t * sound_load(char *path)
 	ALenum format;
 	SDL_AudioSpec wav_spec;
 	u_int8_t *wav_buffer;
-	Uint32 wav_len;
+	Uint32 wav_len;   /* SDL3: SDL_AudioSpec no longer carries the data size */
 	sound_buffer_t * buffer;
 	char * file_path = convert_path(path);
 
@@ -318,11 +310,8 @@ sound_buffer_t * sound_load(char *path)
 		return NULL;
 	}
 
-	/* CAUTION: the length out-param must NOT alias a field of wav_spec
-	   (&wav_spec.size): SDL2's loader fills the spec after writing the length,
-	   clobbering it - OpenAL then gets a garbage-sized buffer and plays silence.
-	   This is why the SDL2 build never had sound. */
-	if( SDL_LoadWAV(file_path, &wav_spec, &wav_buffer, &wav_len) == NULL )
+	/* SDL3: SDL_LoadWAV returns bool and takes a separate length out-param */
+	if( !SDL_LoadWAV(file_path, &wav_spec, &wav_buffer, &wav_len) )
 	{
 		DebugPrintf("Could not open: %s\n", SDL_GetError());
 		alDeleteBuffers( 1, &buffer->id );
@@ -330,13 +319,10 @@ sound_buffer_t * sound_load(char *path)
 		return NULL;
 	}
 
-	DebugPrintf("sound_load: '%s' len=%u bytes freq=%d fmt=0x%x ch=%d\n",
-		file_path, (unsigned) wav_len, wav_spec.freq, wav_spec.format, wav_spec.channels);
-
-	if(wav_spec.format == AUDIO_U8 || wav_spec.format == AUDIO_S8) // 8 bit
+	if(wav_spec.format == SDL_AUDIO_U8 || wav_spec.format == SDL_AUDIO_S8) // 8 bit
 	{
 		// openal only supports usigned 8bit
-		if(wav_spec.format == AUDIO_S8)
+		if(wav_spec.format == SDL_AUDIO_S8)
 		{
 			int i;
 			for(i = 0; i < (int) wav_len; i++)
@@ -352,14 +338,7 @@ sound_buffer_t * sound_load(char *path)
 	}
 	else // 16 bit
 	{
-		// openal only supports signed 16bit
-		if(wav_spec.format == AUDIO_U16)
-		{
-			int i;
-			for(i = 0;i < (int)wav_len/2;i++)
-				((u_int16_t*)wav_buffer)[i] ^= 0x8000; // converts U16 to S16
-			DebugPrintf("sound_buffer: converted u16 to s16\n");
-		}
+		// SDL3 has no unsigned 16-bit WAV format; data arrives signed already
 		if(wav_spec.channels == 1)
 			format = AL_FORMAT_MONO16;
 		else
@@ -375,12 +354,12 @@ sound_buffer_t * sound_load(char *path)
 		DebugPrintf("alBufferData: %s\n", alGetString(error));
 		alDeleteBuffers(1, &buffer->id);
 		free(buffer);
-		SDL_FreeWAV(wav_buffer);
+		SDL_free(wav_buffer); /* SDL3: SDL_FreeWAV removed */
 		return NULL;
 	}
 
 	// data has been coppied
-	SDL_FreeWAV(wav_buffer);
+	SDL_free(wav_buffer); /* SDL3: SDL_FreeWAV removed */
 
 	stats.buffers++;
 	DebugPrintf("sound_load: buffers %d sources %d playing %d buffer %d\n",

@@ -53,50 +53,38 @@ The upstream readme is preserved as `README-upstream.md`.
 
 ---
 
-## Branch `gl3.2-sdl2.30` - GL 3.2 core + SDL 2.30.9 (incl. the historic SDL2 sound fix)
+## Branch `gl4.6-sdl3.4` - SDL 3.4.12 + GL 4.6 core context
 
-SDL2 port of the GL3 backend, plus the input and sound fixes that make an
-SDL2 build of this game actually playable for the first time.
+Port of the SDL2 build to current SDL3. The renderer is unchanged (the
+GLSL 150 shaders are valid in any core context >= 3.2); the context is
+requested as GL 4.6 core with an automatic 3.2 fallback.
 
 ### Build
-`build\preview\compile-client.bat` then `link-client.bat` produce
-`projectx_client_gl3.exe`. Ship `SDL2.dll` (in `build/preview/deps/`) next
-to the exe; `deps/OpenAL32.dll` is openal-soft 1.25.2 (recommended).
+`compile-client.bat` then `link-client.bat` produce
+`projectx_client_sdl3.exe`. Ship `SDL3.dll` next to the exe. Note that there
+is no SDL3main.lib anymore - the classic `main()` links with
+`/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup`.
 
-### Fixes in this branch (on top of gl2-sdl1.2)
-1. **Real GL context under SDL2**: the old SDL2 path used
-   `SDL_CreateRenderer`, which never makes a GL context current - every raw
-   GL call the game issues hit a dead context (`glGetString` returned NULL).
-   Now: `SDL_GL_CreateContext` + `SDL_GL_MakeCurrent` + `SDL_GL_SwapWindow`,
-   GL 3.2 core profile, 24-bit depth buffer explicitly requested.
-2. **glBlendColor**: SDL2's SDL_opengl.h prototypes it, so the loader defines
-   a forwarding function instead of a pointer. `glGetStringi` added to the
-   loader, and the loader now runs at the top of `render_init()` because
-   print_info/detect_caps need glGetStringi under core profiles.
-3. **Working in-game video settings** (menu + Shift+F12): picking a concrete
-   resolution switches to an exclusive fullscreen mode of that size
-   (`SDL_SetWindowDisplayMode` + `SDL_WINDOW_FULLSCREEN`) or resizes and
-   recenters the window in windowed mode; the "default" entry keeps the
-   borderless desktop fullscreen. The GL context survives every variant, and
-   all window-geometry state the game reads (mode index, aspect ratio, HUD
-   scale, 2D y-flip, saved config) is kept in sync with the real drawable
-   size.
-4. **Keyboard bindings normalised to scancodes**: bindings index a 512-entry
-   key-state array fed by `SDL_GetKeyboardState` (scancodes), but the config
-   defaults were SDL keycodes. SDL2 keycodes for arrows etc. are 0x4000xxxx -
-   they cannot index that array (and were even misclassified as joystick
-   codes), which is why ship navigation was dead on SDL2 builds. Defaults,
-   key-name resolution (`SDL_GetScancodeName`) and the rebinding menu
-   (keycode -> `SDL_GetScancodeFromKey`) all live in scancode space now.
-   Config files store key *names* and are matched case-insensitively, so
-   existing configs keep working.
-5. **Relative mouse mode**: without it the hidden cursor stops at the window
-   border and mouse deltas die with it (the "mouse hits invisible walls"
-   bug).
-6. **The SDL2 sound fix**: `sound_load` passed `&wav_spec.size` as
-   SDL_LoadWAV's length out-parameter - aliasing a field of the very spec
-   SDL fills. SDL 1.2's internal write order let the value survive; SDL2
-   clobbers it, so OpenAL received garbage-sized buffers and played silence
-   while reporting AL_PLAYING with no error. A separate `wav_len` variable
-   fixes it. This is most likely why past SDL2 builds of the port "had no
-   sound".
+### SDL2 -> SDL3 changes (complete list)
+* headers: `/I deps/include/SDL3 /I deps/include` so `<SDL.h>` resolves
+* `SDL_Init` returns bool; the SDL_version struct is replaced by packed ints
+* `SDL_CreateWindow(title, w, h, flags)` (no position args); WINDOW_SHOWN gone
+* events renamed `SDL_EVENT_*`; window events are a top-level type range
+  (`SDL_EVENT_WINDOW_FIRST..LAST`) instead of one event with a sub-type
+* `SDL_KeyboardEvent.keysym.sym/mod` -> `.key/.mod`; `KMOD_*` -> `SDL_KMOD_*`
+* letter keycodes renamed `SDLK_a..z` -> `SDLK_A..Z`, BACKQUOTE -> GRAVE
+* `SDL_GetKeyboardState` returns `const bool*`
+* cursor: `SDL_ShowCursor()/SDL_HideCursor()`; grab: `SDL_SetWindowMouseGrab`;
+  relative mouse: `SDL_SetWindowRelativeMouseMode(window, bool)`
+* fullscreen: `SDL_SetWindowFullscreen(window, bool)`; exclusive modes for
+  concrete resolution picks via `SDL_GetClosestFullscreenDisplayMode` +
+  `SDL_SetWindowFullscreenMode` (NULL = borderless desktop for the "default"
+  entry), windowed resizes via `SDL_SetWindowSize`, settled with
+  `SDL_SyncWindow`; `SDL_GL_GetDrawableSize` -> `SDL_GetWindowSizeInPixels`
+* audio: `SDL_LoadWAV(path, spec, buf, &len)` returns bool, SDL_AudioSpec has
+  no `.size` field, there is no unsigned-16 format, `SDL_FreeWAV` -> `SDL_free`
+* `SDL_StartTextInput/StopTextInput` take the window
+* renderer flags removed (we drive our own GL context anyway)
+* joystick: SDL3 addresses sticks by instance id; the port's state arrays
+  index raw ids, so joystick support is disabled on this branch for now
+  (see the TODO in input_sdl.c) - keyboard and mouse are unaffected.

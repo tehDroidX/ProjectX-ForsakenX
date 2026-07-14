@@ -11,23 +11,16 @@ extern bool render_init( render_info_t * info );
 
 bool sdl_init( void )
 {
-	SDL_version ver;
+	/* SDL3 replaced the SDL_version struct with packed integers */
+	int cver = SDL_VERSION;
+	int rver = SDL_GetVersion();
+	DebugPrintf("SDL compile-time version: %u.%u.%u\n",
+		SDL_VERSIONNUM_MAJOR(cver), SDL_VERSIONNUM_MINOR(cver), SDL_VERSIONNUM_MICRO(cver));
+	DebugPrintf("SDL runtime version: %u.%u.%u\n",
+		SDL_VERSIONNUM_MAJOR(rver), SDL_VERSIONNUM_MINOR(rver), SDL_VERSIONNUM_MICRO(rver));
 
-	SDL_VERSION(&ver);
-	DebugPrintf("SDL compile-time version: %u.%u.%u\n", ver.major, ver.minor, ver.patch);
-
-#if SDL_VERSION_ATLEAST(2,0,0)
-	SDL_GetVersion(&ver);
-#else
-	ver = *SDL_Linked_Version();
-#endif
-	DebugPrintf("SDL runtime version: %u.%u.%u\n", ver.major, ver.minor, ver.patch);
-
-	if( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_JOYSTICK ) < 0
-#if !SDL_VERSION_ATLEAST(2,0,0)
-		|| !SDL_GetVideoInfo()
-#endif
-	)
+	/* SDL3: SDL_Init returns true on success (SDL2 returned 0) */
+	if( !SDL_Init( SDL_INIT_VIDEO | SDL_INIT_JOYSTICK ) )
 	{
 		Msg("Failed to initialize sdl: %s\n",SDL_GetError());
 		return false;
@@ -140,9 +133,11 @@ static void set_opengl_settings( void )
 
 #if SDL_VERSION_ATLEAST(2,0,0)
 #if GL == 3
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-	// TODO - this isn't only mac osx specific is it ?
+	// Request the newest core profile first (GL 4.6 is the final OpenGL version);
+	// create_video_surface() falls back to 3.2 core if the driver can't do 4.6.
+	// The GLSL 150 shaders are valid in any core context >= 3.2, so nothing else changes.
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
 #endif
@@ -214,19 +209,14 @@ static u_int32_t create_video_flags( void )
 #if SDL_VERSION_ATLEAST(2,0,0)
 static u_int32_t create_renderer_flags( void )
 {
-	// doubt we want to support   SDL_RENDERER_SOFTWARE
-	// we might need to add       SDL_RENDERER_TARGETTEXTURE
-	u_int32_t renderer_flags = SDL_RENDERER_ACCELERATED;
-
+	/* SDL3 removed the renderer flags; we render through our own GL context anyway
+	   (vsync is applied via SDL_GL_SetSwapInterval after context creation) */
 	DebugPrintf("vsync set to %d\n",render_info.vsync);
-	if(render_info.vsync)
-		renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
-
-	return renderer_flags;
+	return 0;
 }
 static u_int32_t create_window_flags( void )
 {
-	u_int32_t window_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE; // TODO - we really want resizable ?
+	u_int32_t window_flags = SDL_WINDOW_RESIZABLE; // SDL3: windows are shown by default (SDL_WINDOW_SHOWN removed)
 
 	if(render_info.fullscreen)
 		window_flags |= SDL_WINDOW_FULLSCREEN;
@@ -245,10 +235,9 @@ static bool create_video_surface( u_int32_t window_flags, u_int32_t renderer_fla
 {
 #ifndef RENDER_DISABLED
   #if SDL_VERSION_ATLEAST(2,0,0)
+	/* SDL3: SDL_CreateWindow takes (title, w, h, flags) - no position args, centered by default */
 	render_info.window = SDL_CreateWindow(
 		"ProjectX",
-		SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED,
 		render_info.ThisMode.w,
 		render_info.ThisMode.h,
 		window_flags
@@ -263,6 +252,15 @@ static bool create_video_surface( u_int32_t window_flags, u_int32_t renderer_fla
 	// returned NULL -> crash). Create a real GL context and make it current instead.
 	(void) renderer_flags;
 	render_info.glcontext = SDL_GL_CreateContext( render_info.window );
+	if(!render_info.glcontext)
+	{
+		// driver can't do the requested 4.6 core context - fall back to 3.2 core,
+		// the minimum this renderer needs (GLSL 150 + glDrawElementsBaseVertex)
+		DebugPrintf("main_sdl: GL 4.6 core context unavailable (%s), falling back to 3.2\n", SDL_GetError());
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+		render_info.glcontext = SDL_GL_CreateContext( render_info.window );
+	}
 	if(!render_info.glcontext)
 	{
 		Msg("main_sdl: failed to create GL context: %s\n",SDL_GetError());

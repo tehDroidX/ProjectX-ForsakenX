@@ -338,10 +338,10 @@ static struct
   int next;
 } CheatTable[] = 
 {
-  { { SDLK_b, SDLK_u, SDLK_b, SDLK_b, SDLK_l, SDLK_e, SDLK_s, 0 }, EnableCheats, true, 0 },
-  { { SDLK_j, SDLK_i, SDLK_m, SDLK_b, SDLK_e, SDLK_a, SDLK_m, 0 }, JimBeam, false, 0 },
-  { { SDLK_l, SDLK_u, SDLK_m, SDLK_b, SDLK_e, SDLK_r, SDLK_j, SDLK_a, SDLK_c, SDLK_k, 0 }, Lumberjack, false, 0 },
-  { { SDLK_i, SDLK_a, SDLK_m, SDLK_z, SDLK_e, SDLK_u, SDLK_s, 0 }, ToggleGodMode, false, 0 },
+  { { SDLK_B, SDLK_U, SDLK_B, SDLK_B, SDLK_L, SDLK_E, SDLK_S, 0 }, EnableCheats, true, 0 },
+  { { SDLK_J, SDLK_I, SDLK_M, SDLK_B, SDLK_E, SDLK_A, SDLK_M, 0 }, JimBeam, false, 0 },
+  { { SDLK_L, SDLK_U, SDLK_M, SDLK_B, SDLK_E, SDLK_R, SDLK_J, SDLK_A, SDLK_C, SDLK_K, 0 }, Lumberjack, false, 0 },
+  { { SDLK_I, SDLK_A, SDLK_M, SDLK_Z, SDLK_E, SDLK_U, SDLK_S, 0 }, ToggleGodMode, false, 0 },
 };
 // NOTE: add any new cheats to DisableCheats function to ensure they are not active in multiplayer game
 
@@ -547,7 +547,7 @@ void CheckCheats( int key )
 static void ReadKeyboard( void )
 {
 	int i, nkeys;
-	u_int8_t * keys;
+	const bool * keys;   /* SDL3: SDL_GetKeyboardState returns const bool* */
 
 	if( flush_input )
 	{
@@ -555,11 +555,7 @@ static void ReadKeyboard( void )
 		return;
 	}
 
-#if SDL_VERSION_ATLEAST(2,0,0)
 	keys = SDL_GetKeyboardState( &nkeys );
-#else
-	keys = SDL_GetKeyState( &nkeys );
-#endif
 
 	//printf("number of keys = %d\n",nkeys);
 
@@ -891,7 +887,7 @@ void control_ship( USERCONFIG *conf, SHIPCONTROL *ctrl )
     }
   }
 
-  if ( ( SDL_GetModState() & KMOD_CTRL ) && key_pressed( &conf->send_msg ) && MyGameStatus == STATUS_Normal )
+  if ( ( SDL_GetModState() & SDL_KMOD_CTRL ) && key_pressed( &conf->send_msg ) && MyGameStatus == STATUS_Normal )
   {
     MenuRestart( &MENU_QuickTextSendWhisper );
   }

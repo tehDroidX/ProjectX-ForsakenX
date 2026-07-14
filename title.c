@@ -6347,7 +6347,7 @@ bool ProcessDefKey( int Key )
 			   live in their own small ranges above SDLK_LAST and pass through. */
 			if ( Key >= 0x40000000 || Key < SDLK_LAST )
 			{
-				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key, NULL );
 				if ( _sc <= 0 || _sc >= SDLK_LAST )
 				{
 					done = true;
@@ -15811,7 +15811,7 @@ bool ProcessKeydef( int Key )
 			   live in their own small ranges above SDLK_LAST and pass through. */
 			if ( Key >= 0x40000000 || Key < SDLK_LAST )
 			{
-				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key, NULL );
 				if ( _sc <= 0 || _sc >= SDLK_LAST )
 				{
 					done = true;

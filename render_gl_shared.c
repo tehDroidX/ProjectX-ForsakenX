@@ -587,8 +587,9 @@ bool render_mode_select( render_info_t * info )
 	// window's fullscreen state instead of recreating the video system. Recreating it
 	// (SDL_SetVideoMode / a new window) destroys the GL context and with it every
 	// texture, VBO and VAO - that is the "switching to fullscreen corrupts the render,
-	// and switching back stays broken" bug. SDL_WINDOW_FULLSCREEN_DESKTOP is a borderless
-	// desktop-resolution window: no videomode change, so the context survives intact.
+	// and switching back stays broken" bug. SDL3 borderless desktop fullscreen (the
+	// default when no exclusive mode is set) changes no videomode, so the context
+	// survives intact.
 	if ( info->window && info->glcontext )
 	{
 		int w = 0, h = 0;
@@ -596,27 +597,22 @@ bool render_mode_select( render_info_t * info )
 		if ( info->fullscreen )
 		{
 			// a concrete resolution pick becomes an exclusive fullscreen mode;
-			// the 0x0 "default" entry keeps borderless desktop fullscreen
-			Uint32 fsflag = SDL_WINDOW_FULLSCREEN_DESKTOP;
-			if ( info->default_mode.w > 0 && info->default_mode.h > 0 )
-			{
-				SDL_DisplayMode req, closest;
-				SDL_zero( req );
-				req.w = info->default_mode.w;
-				req.h = info->default_mode.h;
-				if ( SDL_GetClosestDisplayMode(
-						SDL_GetWindowDisplayIndex( info->window ), &req, &closest ) != NULL )
-				{
-					SDL_SetWindowDisplayMode( info->window, &closest );
-					fsflag = SDL_WINDOW_FULLSCREEN;
-				}
-			}
-			if ( SDL_SetWindowFullscreen( info->window, fsflag ) != 0 )
+			// the 0x0 "default" entry keeps borderless desktop fullscreen (NULL mode)
+			SDL_DisplayMode closest;
+			const SDL_DisplayMode * pick = NULL;
+			if ( info->default_mode.w > 0 && info->default_mode.h > 0 &&
+			     SDL_GetClosestFullscreenDisplayMode(
+			         SDL_GetDisplayForWindow( info->window ),
+			         info->default_mode.w, info->default_mode.h, 0.0f, true, &closest ) )
+				pick = &closest;
+			SDL_SetWindowFullscreenMode( info->window, pick );
+			/* SDL3: SDL_SetWindowFullscreen takes a bool and returns true on success */
+			if ( !SDL_SetWindowFullscreen( info->window, true ) )
 				DebugPrintf( "render_mode_select: SDL_SetWindowFullscreen failed: %s\n", SDL_GetError() );
 		}
 		else
 		{
-			if ( SDL_SetWindowFullscreen( info->window, 0 ) != 0 )
+			if ( !SDL_SetWindowFullscreen( info->window, false ) )
 				DebugPrintf( "render_mode_select: SDL_SetWindowFullscreen failed: %s\n", SDL_GetError() );
 			// SDL_SetWindowSize only applies to the windowed state, so leave fullscreen first
 			if ( info->default_mode.w > 0 && info->default_mode.h > 0 )
@@ -625,8 +621,9 @@ bool render_mode_select( render_info_t * info )
 				SDL_SetWindowPosition( info->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED );
 			}
 		}
+		SDL_SyncWindow( info->window );	// fullscreen/size requests are asynchronous
 
-		SDL_GL_GetDrawableSize( info->window, &w, &h );
+		SDL_GetWindowSizeInPixels( info->window, &w, &h );
 		if ( w > 0 && h > 0 )
 		{
 			// keep every consumer of window geometry coherent with the real size:

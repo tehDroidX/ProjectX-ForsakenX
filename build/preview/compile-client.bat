@@ -36,9 +36,9 @@ set DEFS=/DWIN32 /D_X86_ /DGL=3 /DNET_ENET_2 /DBSP /DLUA_USE_APICHECK /DTEXTURE_
  /DDEBUG_ON /DDEBUG_COMP /DDEBUG_SPOTFX_SOUND /DDEBUG_VIEWPORT ^
  /D_CRT_SECURE_NO_WARNINGS /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /D_WINSOCK_DEPRECATED_NO_WARNINGS
 rem SDL2 headers replace the SDL1.2 compat\SDL dir; keep compat (unistd/GL/png shims)
-set INCS=/I"%PV%\deps\include\SDL2" /I"%SMOKE%\compat" /I"%ENG%" /I"%ENG%\gl2_loader" /I"%PV%\deps\include"
+set INCS=/I"%PV%\deps\include\SDL3" /I"%PV%\deps\include" /I"%SMOKE%\compat" /I"%ENG%" /I"%ENG%\gl2_loader" /I"%PV%\deps\include"
 cd /d "%ENG%"
-echo === compiling 100 originals (GL=3, SDL2) ===
+echo === compiling 100 originals (GL=3, SDL3) ===
 cl /c /nologo /MD /std:c11 /W1 %DEFS% %INCS% /Fo"%OBJ%\\" @"%PV%\obj\originals.rsp" >"%PV%\cc-orig.log" 2>&1
 if errorlevel 1 (echo ORIG_FAILED & exit /b 1)
 echo === compiling 5 patched + gl2 loader ===

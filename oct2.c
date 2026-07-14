@@ -924,7 +924,7 @@ void ProcessGameKeys( void )
 	{
 
     // Shift Modifier
-    if ( SDL_GetModState() & KMOD_SHIFT )
+    if ( SDL_GetModState() & SDL_KMOD_SHIFT )
     {
 
       // Shift + F1
@@ -941,7 +941,7 @@ void ProcessGameKeys( void )
 			}
 
       // Shift + Ctrl Modifier
-      if ( SDL_GetModState() & KMOD_CTRL )
+      if ( SDL_GetModState() & SDL_KMOD_CTRL )
       {
 
         // Shift + Ctrl + F2
@@ -1027,7 +1027,7 @@ void ProcessGameKeys( void )
 
     } // end shift modifier
     // CTRL Modifiers
-    else if ( SDL_GetModState() & KMOD_CTRL )
+    else if ( SDL_GetModState() & SDL_KMOD_CTRL )
     {
 
 		// Ctrl + F1
@@ -1177,7 +1177,7 @@ void ProcessGameKeys( void )
     {
 
       // Shift Modifier
-      if ( SDL_GetModState() & KMOD_SHIFT )
+      if ( SDL_GetModState() & SDL_KMOD_SHIFT )
       {
 
         // Shift + F9

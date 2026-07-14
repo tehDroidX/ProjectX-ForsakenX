@@ -36,16 +36,17 @@ void input_grab( bool grab )
 		/* relative mouse mode delivers unbounded deltas (no cursor, no window-edge
 		   clamping - without it the view stops when the hidden cursor hits the
 		   window border) */
-		SDL_SetRelativeMouseMode( SDL_TRUE );
-		SDL_SetWindowGrab( render_info.window, SDL_TRUE );
+		SDL_SetWindowRelativeMouseMode( render_info.window, true );
+		SDL_SetWindowMouseGrab( render_info.window, true );
 		return;
 	}
 	// window mode
 	input_grabbed = grab;
 
-	SDL_SetRelativeMouseMode( grab ? SDL_TRUE : SDL_FALSE );
-	SDL_SetWindowGrab( render_info.window, grab ? SDL_TRUE : SDL_FALSE );
-	SDL_ShowCursor( grab ? SDL_DISABLE : SDL_ENABLE );
+	SDL_SetWindowRelativeMouseMode( render_info.window, grab ? true : false );
+	SDL_SetWindowMouseGrab( render_info.window, grab ? true : false );
+	if( grab ) SDL_HideCursor();
+	else       SDL_ShowCursor();
 
 	//DebugPrintf("input state: %s\n",(grab?"grabbed":"free"));
 }
@@ -119,24 +120,14 @@ void app_resize( SDL_ResizeEvent * resize )
 	SetGamePrefs();
 }
 
-#if SDL_VERSION_ATLEAST(2,0,0)
 void app_active( SDL_WindowEvent * window )
-#else
-void app_active( SDL_ActiveEvent * active )
-#endif
 {
-//	DebugPrintf("window active state set to: %s\n",(active->gain?"true":"false"));
-
-// since sdl 2 can support more than one type of event we want to explicitly check both gained/lost state
-#if SDL_VERSION_ATLEAST(2,0,0)
-	bool gained  = window -> event == SDL_WINDOWEVENT_FOCUS_GAINED;
-	bool lost    = window -> event == SDL_WINDOWEVENT_FOCUS_LOST;
-	bool resized = window -> event == SDL_WINDOWEVENT_RESIZED;
-	bool exposed = window -> event == SDL_WINDOWEVENT_EXPOSED;
-#else
-	bool gained = active -> gain;
-	bool lost   = ! gained;
-#endif
+	/* SDL3: window events are top-level event types (SDL_EVENT_WINDOW_*),
+	   the SDL2 sub-type field (window->event) is gone */
+	bool gained  = window -> type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+	bool lost    = window -> type == SDL_EVENT_WINDOW_FOCUS_LOST;
+	bool resized = window -> type == SDL_EVENT_WINDOW_RESIZED;
+	bool exposed = window -> type == SDL_EVENT_WINDOW_EXPOSED;
 
 	if( lost )
 		input_grab( false );
@@ -162,30 +153,11 @@ void app_active( SDL_ActiveEvent * active )
 		RenderModeReset();
 	}
 
-#if SDL_VERSION_ATLEAST(2,0,0)
-
 	if( resized )
 		app_resize( window );
 
 	if( exposed )
 		render_flip(&render_info);
-
-#endif
-
-#if !SDL_VERSION_ATLEAST(2,0,0)
-	switch( active->state )
-	{
-	case SDL_APPMOUSEFOCUS: // mouse
-		//DebugPrintf("Mouse event\n");
-		break;
-	case SDL_APPINPUTFOCUS: // keyboard
-		//DebugPrintf("keyboard event\n");
-		break;
-	case SDL_APPACTIVE: // minimize/iconified
-		//DebugPrintf("Iconify event\n");
-		break;
-	}
-#endif
 }
 
 void app_quit( void )
@@ -218,37 +190,26 @@ void app_quit( void )
 
 void app_keyboard( SDL_KeyboardEvent * key )
 {
-	if( key->type == SDL_KEYUP )
+	/* SDL3: SDL_KeyboardEvent lost the keysym sub-struct - key/mod/scancode are direct
+	   members - and the event types/mod masks were renamed */
+	if( key->type == SDL_EVENT_KEY_UP )
 	{
-		if( key->keysym.sym == SDLK_F12 && key->keysym.mod & KMOD_SHIFT )
+		if( key->key == SDLK_F12 && key->mod & SDL_KMOD_SHIFT )
 		{
 				MenuGoFullScreen( NULL );
 		}
-		else if( key->keysym.sym == SDLK_RSHIFT || key->keysym.sym == SDLK_LSHIFT )
+		else if( key->key == SDLK_RSHIFT || key->key == SDLK_LSHIFT )
 		{
-#if SDL_VERSION_ATLEAST(2,0,0)
-				u_int8_t *keystate = SDL_GetKeyboardState(NULL);
+				const bool *keystate = SDL_GetKeyboardState(NULL);
 				if ( keystate[SDL_SCANCODE_F12] )
-#else
-				u_int8_t *keystate = SDL_GetKeyState(NULL);
-				if ( keystate[SDLK_F12] )
-#endif
 					MenuGoFullScreen( NULL );
 		}
 	}
-	if( key->type == SDL_KEYDOWN )
+	if( key->type == SDL_EVENT_KEY_DOWN )
 	{
-#if SDL_VERSION_ATLEAST(2,0,0)
-		/* SDL2 dropped keysym.unicode; text goes through SDL_TEXTINPUT instead.
-		   For menu/gameplay controls the keysym is sufficient. */
-		input_buffer_send( key->keysym.sym );
-#else
-		input_buffer_send(
-			key->keysym.unicode ?
-				key->keysym.unicode :
-				key->keysym.sym
-		);
-#endif
+		/* text input goes through SDL_EVENT_TEXT_INPUT; for menu/gameplay controls
+		   the keycode is sufficient */
+		input_buffer_send( key->key );
 	}
 }
 
@@ -295,32 +256,17 @@ void app_mouse_button( SDL_MouseButtonEvent * _event )
 
 	// pass down mouse events for menu processing
 	// note: wheel events are sent above in app_mouse_wheel for sdl2
-	if(  _event->type == SDL_MOUSEBUTTONDOWN )
+	if(  _event->type == SDL_EVENT_MOUSE_BUTTON_DOWN )
 		input_buffer_send( button + LEFT_MOUSE );
 
 	switch( _event->button )
 	{
-#if !SDL_VERSION_ATLEAST(2,0,0)
-	// mouse wheel button down/up are sent at same time
-	// so if we react to the up event then we undo the down event !
-	// so we must ignore up events and reset it further bellow manually
-	// since a wheel event can never be held down this is ok...
-	case SDL_BUTTON_WHEELUP:
-		if( _event->type == SDL_MOUSEBUTTONDOWN )
-			mouse_wheel_up();
-		break;
-	case SDL_BUTTON_WHEELDOWN:
-		if( _event->type == SDL_MOUSEBUTTONDOWN )
-			mouse_wheel_down();
-		break;
-#endif
-
 	//
 	// Every other mouse button works like normal
 	//
 	default: 
 		// save the button state
-		mouse_state.buttons[ button ] = ( _event->type == SDL_MOUSEBUTTONDOWN );
+		mouse_state.buttons[ button ] = ( _event->type == SDL_EVENT_MOUSE_BUTTON_DOWN );
 		//DebugPrintf("sdl mouse button %d %s\n",_event->button,
 		//	(mouse_state.buttons[ button ]?"pressed":"released"));
 		break;
@@ -414,10 +360,10 @@ void app_joy_button( SDL_JoyButtonEvent * button )
 	}
 
 	joy_button_state[ button->which ][ button->button ] =
-		(button->type == SDL_JOYBUTTONDOWN);
+		(button->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
 
 	// pass down mouse events for menu processing
-	if(  button->type == SDL_JOYBUTTONDOWN )
+	if(  button->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN )
 	{
 		input_buffer_send(
 			button->button + DIK_JOYSTICK
@@ -520,6 +466,13 @@ bool joysticks_init(void)
 
 	joysticks_cleanup();
 
+	/* TODO SDL3: joysticks are addressed by instance id (SDL_GetJoysticks) instead of
+	   0..n-1 indices; the joy_*_state arrays in this port are indexed by that raw id.
+	   Until that mapping is reworked, joystick support is disabled under SDL3 -
+	   keyboard + mouse are unaffected. */
+	Num_Joysticks = 0;
+	return true;
+#if 0
 	Num_Joysticks = SDL_NumJoysticks();
 
 	DebugPrintf( "joysticks_init: %d joysticks connected\n", Num_Joysticks );
@@ -622,6 +575,7 @@ bool joysticks_init(void)
 	}
 
 	return true;
+#endif /* 0 - SDL2 joystick enumeration, disabled under SDL3 (see TODO above) */
 }
 
 bool joysticks_cleanup( void )
@@ -653,7 +607,7 @@ bool joysticks_cleanup( void )
 			if(SDL_JoystickOpened(i))
 #endif
 			{
-				SDL_JoystickClose(
+				SDL_CloseJoystick(
 					JoystickInfo[i].sdl_joy
 				);
 			}
@@ -727,124 +681,58 @@ bool handle_events( void )
 
 	while( SDL_PollEvent( &_event ) )
 	{
+		/* SDL3: window events are a contiguous range of top-level types instead of
+		   one SDL_WINDOWEVENT with a sub-type */
+		if ( _event.type >= SDL_EVENT_WINDOW_FIRST && _event.type <= SDL_EVENT_WINDOW_LAST )
+		{
+			app_active( &_event.window );
+			continue;
+		}
+
 		switch( _event.type )
 		{
-
-
-// previously mouse wheel was a button code
-// now it's an x/y axis since it supports mouse wheel balls
-#if SDL_VERSION_ATLEAST(2,0,0)
-		case SDL_MOUSEWHEEL:
-			app_mouse_wheel( &_event );
-			break;
-#endif
-
-
-// this event name has changed
-#if SDL_VERSION_ATLEAST(2,0,0)
-// TODO - we should call something like app_window
-//        which then delegates to app_active in correct case
-		case SDL_WINDOWEVENT:
-			app_active( &_event );
-			break;
-#else
-		case SDL_ACTIVEEVENT:
-			app_active( &_event.active );
-			break;
-#endif
-
-
-// these have been moved into the window event above
-#if !SDL_VERSION_ATLEAST(2,0,0)
-		case SDL_VIDEORESIZE:
-			app_resize( &_event.resize );
+		case SDL_EVENT_MOUSE_WHEEL:
+			app_mouse_wheel( &_event.wheel );
 			break;
 
-		case SDL_VIDEOEXPOSE: // need redraw
-			render_flip(&render_info);
-			break;
-#endif
-
-// the newer sdl now uses a union instead of sub structures
-#if SDL_VERSION_ATLEAST(2,0,0)
-		case SDL_KEYDOWN:
-		case SDL_KEYUP:
-			app_keyboard( &_event );
-			break;
-
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
-			app_mouse_button( &_event );
-			break;
-
-		case SDL_MOUSEMOTION:
-			app_mouse_motion( &_event );
-			break;
-
-		case SDL_JOYAXISMOTION:
-			app_joy_axis( &_event );
-			break;
-
-		case SDL_JOYBALLMOTION:
-			app_joy_ball( &_event );
-			break;
-
-		case SDL_JOYBUTTONDOWN:
-		case SDL_JOYBUTTONUP:
-			app_joy_button( &_event );
-			break;
-
-		case SDL_JOYHATMOTION:
-			app_joy_hat( &_event );
-			break;
-
-#else
-		case SDL_KEYDOWN:
-		case SDL_KEYUP:
+		case SDL_EVENT_KEY_DOWN:
+		case SDL_EVENT_KEY_UP:
 			app_keyboard( &_event.key );
 			break;
 
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
+		case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		case SDL_EVENT_MOUSE_BUTTON_UP:
 			app_mouse_button( &_event.button );
 			break;
 
-		case SDL_MOUSEMOTION:
+		case SDL_EVENT_MOUSE_MOTION:
 			app_mouse_motion( &_event.motion );
 			break;
 
-		case SDL_JOYAXISMOTION:
+		case SDL_EVENT_JOYSTICK_AXIS_MOTION:
 			app_joy_axis( &_event.jaxis );
 			break;
 
-		case SDL_JOYBALLMOTION:
+		case SDL_EVENT_JOYSTICK_BALL_MOTION:
 			app_joy_ball( &_event.jball );
 			break;
 
-		case SDL_JOYBUTTONDOWN:
-		case SDL_JOYBUTTONUP:
+		case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+		case SDL_EVENT_JOYSTICK_BUTTON_UP:
 			app_joy_button( &_event.jbutton );
 			break;
 
-		case SDL_JOYHATMOTION:
+		case SDL_EVENT_JOYSTICK_HAT_MOTION:
 			app_joy_hat( &_event.jhat );
 			break;
 
-#endif
-
-		case SDL_QUIT:
+		case SDL_EVENT_QUIT:
 			app_quit();
-			break;
-
-		// platform specific _event type
-		// must be enabled using SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE)
-		case SDL_SYSWMEVENT:
-			DebugPrintf("recived a platform specific _event type\n");
 			break;
 
 		// to avoid threading issues timers will add an event to the queue
 		// so that we can call the callbacks from the same thread
-		case SDL_USEREVENT:
+		case SDL_EVENT_USER:
 			{
 				void (*p) (void*) = _event.user.data1; // callback
 				p(_event.user.data2); // callback( data )

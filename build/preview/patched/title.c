@@ -6537,7 +6537,7 @@ bool ProcessDefKey( int Key )
 			   live in their own small ranges above SDLK_LAST and pass through. */
 			if ( Key >= 0x40000000 || Key < SDLK_LAST )
 			{
-				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key, NULL );
 				if ( _sc <= 0 || _sc >= SDLK_LAST )
 				{
 					done = true;
@@ -8063,7 +8063,7 @@ void MenuEnterTextInputState(int state)
 	MenuState = state;
 // TODO is this right ?
 #if SDL_VERSION_ATLEAST(2,0,0)
-	SDL_StartTextInput();
+	SDL_StartTextInput( render_info.window );
 #else
 	if(!SDL_EnableUNICODE(-1))
 		SDL_EnableUNICODE(1);
@@ -16001,7 +16001,7 @@ bool ProcessKeydef( int Key )
 			   live in their own small ranges above SDLK_LAST and pass through. */
 			if ( Key >= 0x40000000 || Key < SDLK_LAST )
 			{
-				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key, NULL );
 				if ( _sc <= 0 || _sc >= SDLK_LAST )
 				{
 					done = true;
@@ -16404,7 +16404,7 @@ bool ProcessText( int Key )
 //      will probably need to support SDL_TextInputEvent
 	if(done)
 #if SDL_VERSION_ATLEAST(2,0,0)
-		SDL_StopTextInput();
+		SDL_StopTextInput( render_info.window );
 #else
 		SDL_EnableUNICODE(0);
 #endif
