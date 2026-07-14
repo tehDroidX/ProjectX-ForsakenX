@@ -1,13 +1,12 @@
-*.sh
-*.o
-projectx*
-libs*
-unix*
-mingw*
-data
-configs
-logs
-pilots
-savegame
-*.dll
-gmon.out
+# build artifacts (this fork's MSVC pipeline)
+build/preview/obj/*
+!build/preview/obj/*.rsp
+build/preview/obj-*/
+build/preview/*.exe
+build/preview/*.log
+build/preview/*.mapbak
+*.obj
+*.pdb
+*.ilk
+Logs/
+gl2_dump*.ppm
