@@ -61,6 +61,7 @@ typedef struct {
 #if SDL_VERSION_ATLEAST(2,0,0)
 	SDL_Window*             window;
 	SDL_Renderer*           renderer;
+	SDL_GLContext           glcontext;   /* real GL context for raw-GL rendering (GL2/GL3) */
 #else
 	SDL_Surface*	        screen;
 #endif
@@ -147,7 +148,6 @@ typedef struct RENDEROBJECT
 	LPARRAYBUFFER	lpNormalBuffer;
 	LPINDEXBUFFER	lpIndexBuffer;
 	bool			vbLocked;
-	unsigned		ctx_gen;	/* GL context generation the buffers were created in */
 	int numTextureGroups;
 	TEXTUREGROUP textureGroups[MAX_TEXTURE_GROUPS];
 } RENDEROBJECT;
@@ -158,7 +158,6 @@ typedef struct LEVELRENDEROBJECT
 	LPARRAYBUFFER	lpNormalBuffer;
 	LPINDEXBUFFER	lpIndexBuffer;
 	bool			vbLocked;
-	unsigned		ctx_gen;	/* GL context generation the buffers were created in */
 	int numTextureGroups;
 	TEXTUREGROUP textureGroups[MAX_LEVEL_TEXTURE_GROUPS];
 } LEVELRENDEROBJECT;

@@ -558,6 +558,12 @@ static void detect_caps( void )
 
 bool render_init( render_info_t * info )
 {
+#if GL > 1
+	/* Load GL2+ entry points BEFORE print_info()/detect_caps(): under GL3 those use
+	   glGetStringi (core-profile extension enumeration), which lives in the loader.
+	   set_defaults() also calls this - it is idempotent. */
+	gl2_load_functions();
+#endif
 	print_info();
 	detect_caps();
 	if(!set_defaults()) return false;
@@ -576,14 +582,78 @@ void render_cleanup( render_info_t * info )
 
 bool render_mode_select( render_info_t * info )
 {
-#if GL > 1 && !SDL_VERSION_ATLEAST(2,0,0)
-	// SDL 1.2 on Windows recreates the GL context on SDL_SetVideoMode: every texture,
-	// VBO, VAO and shader program dies with it. Drop the CPU-side caches and stale
-	// handle bookkeeping first, then fall through to the full reinit: sdl_init_video
-	// recompiles the shaders via render_init, and the InitView run by RenderModeSelect
-	// reloads every texture and buffer - the same way the GL1 build recovers.
-	if ( info->ok_to_render )
-		gl_context_lost_reset();
+#if SDL_VERSION_ATLEAST(2,0,0)
+	// Real fullscreen fix: if a window + GL context already exist, just toggle the
+	// window's fullscreen state instead of recreating the video system. Recreating it
+	// (SDL_SetVideoMode / a new window) destroys the GL context and with it every
+	// texture, VBO and VAO - that is the "switching to fullscreen corrupts the render,
+	// and switching back stays broken" bug. SDL_WINDOW_FULLSCREEN_DESKTOP is a borderless
+	// desktop-resolution window: no videomode change, so the context survives intact.
+	if ( info->window && info->glcontext )
+	{
+		int w = 0, h = 0;
+		int i;
+		if ( info->fullscreen )
+		{
+			// a concrete resolution pick becomes an exclusive fullscreen mode;
+			// the 0x0 "default" entry keeps borderless desktop fullscreen
+			Uint32 fsflag = SDL_WINDOW_FULLSCREEN_DESKTOP;
+			if ( info->default_mode.w > 0 && info->default_mode.h > 0 )
+			{
+				SDL_DisplayMode req, closest;
+				SDL_zero( req );
+				req.w = info->default_mode.w;
+				req.h = info->default_mode.h;
+				if ( SDL_GetClosestDisplayMode(
+						SDL_GetWindowDisplayIndex( info->window ), &req, &closest ) != NULL )
+				{
+					SDL_SetWindowDisplayMode( info->window, &closest );
+					fsflag = SDL_WINDOW_FULLSCREEN;
+				}
+			}
+			if ( SDL_SetWindowFullscreen( info->window, fsflag ) != 0 )
+				DebugPrintf( "render_mode_select: SDL_SetWindowFullscreen failed: %s\n", SDL_GetError() );
+		}
+		else
+		{
+			if ( SDL_SetWindowFullscreen( info->window, 0 ) != 0 )
+				DebugPrintf( "render_mode_select: SDL_SetWindowFullscreen failed: %s\n", SDL_GetError() );
+			// SDL_SetWindowSize only applies to the windowed state, so leave fullscreen first
+			if ( info->default_mode.w > 0 && info->default_mode.h > 0 )
+			{
+				SDL_SetWindowSize( info->window, info->default_mode.w, info->default_mode.h );
+				SDL_SetWindowPosition( info->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED );
+			}
+		}
+
+		SDL_GL_GetDrawableSize( info->window, &w, &h );
+		if ( w > 0 && h > 0 )
+		{
+			// keep every consumer of window geometry coherent with the real size:
+			// FOV/projection read WindowsDisplay, HUD scale and the 2D y-flip read
+			// ThisMode/window_size, the saved config and menu highlight read CurrMode
+			info->default_mode.w = w;
+			info->default_mode.h = h;
+			info->ThisMode.w = w;
+			info->ThisMode.h = h;
+			info->window_size.cx = w;
+			info->window_size.cy = h;
+			info->WindowsDisplay.w = w;
+			info->WindowsDisplay.h = h;
+			info->aspect_ratio = (float) w / (float) h;
+			for ( i = 1; i < info->NumModes; i++ )
+			{
+				if ( info->Mode[i].w == w && info->Mode[i].h == h )
+				{
+					info->CurrMode = i;
+					break;
+				}
+			}
+			resize_viewport( w, h );
+		}
+		SDL_GL_SetSwapInterval( info->vsync ? 1 : 0 );
+		return true;
+	}
 #endif
 	render_cleanup( info );
 	if(!sdl_init_video())
@@ -851,11 +921,9 @@ bool mvp_needs_update;
 void mvp_update( GLuint current_program )
 {
 	MATRIX mvp;
-	/* Cache the "mvp" uniform location per program. mvp_update runs once per moving
-	   object (every projectile/rocket calls FSSetWorld -> mvp_needs_update), and a
-	   glGetUniformLocation string lookup on this driver is very expensive - doing it
-	   per moving object is what made the framerate collapse as projectiles piled up.
-	   (GL1 uses glLoadMatrixf and never had this cost.) */
+	/* Cache the "mvp" uniform location per program - mvp_update runs once per moving
+	   object (FSSetWorld marks it dirty) and a glGetUniformLocation string lookup per
+	   object is needlessly expensive. */
 	static GLuint mvp_prog = (GLuint)-1;
 	static GLint  u_mvp = -1;
 	if ( mvp_prog != current_program )
@@ -970,23 +1038,18 @@ bool draw_line_object(RENDEROBJECT *renderObject){return draw_render_object(rend
  * The VAO used to be stored in the RENDEROBJECT struct, but that struct is
  * copied BY VALUE: transexe.c queues every transparent object with
  *   TransExe[i].renderObject = *renderObject;
- * The transparent effect models (explosions, rocket blasts, glows, scale FX,
- * additive weapon effects) are ONLY ever drawn through that transient copy -
- * their source group is never drawn directly, so its vao field stays 0. Every
- * frame the pool is refilled (NumOfTransExe=0), the copy inherits vao==0,
- * draw_render_object generates a fresh VAO into the throwaway copy, and next
- * frame that handle is orphaned and never glDeleteVertexArrays'd. One leaked
- * VAO per transparent effect per frame -> unbounded growth while firing ->
- * driver slows to a crawl (GL1 is immune, it has no VAO code).
+ * The transparent effect models (explosions, rocket blasts, glows, scale FX)
+ * are ONLY ever drawn through that transient copy - their source group is never
+ * drawn directly, so its vao field stays 0. Every frame the pool is refilled,
+ * the copy inherits vao==0, draw_render_object generates a fresh VAO into the
+ * throwaway copy, and next frame that handle is orphaned and never deleted.
+ * One leaked VAO per transparent effect per frame -> unbounded growth while
+ * firing -> driver slows to a crawl (GL1 is immune, it has no VAO code).
  *
  * Keying the VAO off the (stable) GL buffer handles instead means every copy of
  * an object resolves to the SAME cached VAO, so nothing leaks and the per-object
  * fast path is kept. Entries are evicted when their buffers are deleted
- * (FSReleaseRenderObject), which also prevents a reused buffer id from hitting a
- * stale VAO. Open addressing with tombstones so deletions don't break probe
- * chains; the live set (buffers currently loaded) is a few hundred, far under
- * the capacity. ------------------------------------------------------------ */
-
+ * (FSReleaseRenderObject). Open addressing with tombstones. ----------------- */
 #define VAO_CACHE_CAP 16384u        /* power of two */
 typedef struct { GLuint vbuf, nbuf, ibuf, vao; unsigned char ortho, state; } vao_cache_entry_t;
 /* state: 0 = empty, 1 = live, 2 = tombstone (deleted; keep probing past it) */
@@ -1123,61 +1186,21 @@ void shadow_free( GLuint id )
 			return;
 	}
 }
-
-/* Bumped when SDL_SetVideoMode has destroyed the GL context (SDL 1.2 on Windows).
-   FSCreate*Buffer stamps the current generation into the RENDEROBJECT. */
-unsigned render_ctx_gen = 1;
-
-/* The old context's GL objects are already gone, so no glDelete* calls here: just
-   drop every CPU-side cache tied to the dead names and bump the generation so
-   releases of old-context RENDEROBJECTs can't delete same-numbered buffers that
-   InitView has meanwhile created in the new context. Shader handle globals are
-   zeroed so set_default_shaders / update_shader_program don't glDelete stale
-   handles inside the fresh context either. */
-void gl_context_lost_reset( void )
-{
-	unsigned i;
-	for ( i = 0; i < SHADOW_CAP; i++ )
-	{
-		if ( shadow_tab[i].state == 1 && shadow_tab[i].ptr )
-			free( shadow_tab[i].ptr );
-	}
-	memset( shadow_tab, 0, sizeof(shadow_tab) );
-	memset( vao_cache, 0, sizeof(vao_cache) );
-	vertex_shader = 0;
-	fragment_shader = 0;
-	current_program = 0;
-	render_ctx_gen++;
-}
 #endif // GL != 1
 
 void FSReleaseRenderObject(RENDEROBJECT *renderObject)
 {
 	int i;
 #if GL != 1
-	if ( renderObject->ctx_gen != render_ctx_gen )
-	{
-		/* The buffers were created in a GL context that no longer exists (video
-		   mode change on SDL 1.2). Their numeric ids may already name freshly
-		   created buffers, so deleting or cache-evicting them would corrupt the
-		   new context - just forget the handles; the caches were already cleared
-		   by gl_context_lost_reset. */
-		renderObject->lpVertexBuffer = NULL;
-		renderObject->lpNormalBuffer = NULL;
-		renderObject->lpIndexBuffer = NULL;
-	}
-	else
-	{
-		/* Evict cached VAO(s) + shadow copies keyed off these buffers BEFORE the handles
-		   are freed below, so a later reused buffer id can't hit stale state. */
-		vao_cache_evict(
-			(GLuint)(size_t) renderObject->lpVertexBuffer,
-			(GLuint)(size_t) renderObject->lpNormalBuffer,
-			(GLuint)(size_t) renderObject->lpIndexBuffer );
-		shadow_free( (GLuint)(size_t) renderObject->lpVertexBuffer );
-		shadow_free( (GLuint)(size_t) renderObject->lpNormalBuffer );
-		shadow_free( (GLuint)(size_t) renderObject->lpIndexBuffer );
-	}
+	/* Evict cached VAO(s) + shadow copies keyed off these buffers BEFORE the handles
+	   are freed below, so a later reused buffer id can't hit stale state. */
+	vao_cache_evict(
+		(GLuint)(size_t) renderObject->lpVertexBuffer,
+		(GLuint)(size_t) renderObject->lpNormalBuffer,
+		(GLuint)(size_t) renderObject->lpIndexBuffer );
+	shadow_free( (GLuint)(size_t) renderObject->lpVertexBuffer );
+	shadow_free( (GLuint)(size_t) renderObject->lpNormalBuffer );
+	shadow_free( (GLuint)(size_t) renderObject->lpIndexBuffer );
 #endif
 	if (renderObject->lpVertexBuffer)
 	{

@@ -2975,7 +2975,7 @@ bool ProcessModelExec( RENDEROBJECT *renderObject, int16_t NumVerts, float Scale
 	{
 		return false;
 	}
-
+	
 	while( NumVerts-- )
 	{
 		DstlpD3DLVERTEX->color = Colour;

@@ -6531,6 +6531,20 @@ bool ProcessDefKey( int Key )
 	default:
 		if ( Key )
 		{
+			/* the input buffer carries SDL keycodes, but bindings are stored as
+			   scancodes (they index the 512-entry key_state array; SDL2/3 keycodes
+			   like the arrows are 0x4000xxxx and cannot). Mouse and joystick codes
+			   live in their own small ranges above SDLK_LAST and pass through. */
+			if ( Key >= 0x40000000 || Key < SDLK_LAST )
+			{
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				if ( _sc <= 0 || _sc >= SDLK_LAST )
+				{
+					done = true;
+					break;
+				}
+				Key = (int) _sc;
+			}
 			if ( KeyItem->Variable )
 			{
 				KeyDefine( KeyItem, (VirtualKeycode) Key );
@@ -15981,6 +15995,20 @@ bool ProcessKeydef( int Key )
 	default:
 		if ( Key )
 		{
+			/* the input buffer carries SDL keycodes, but bindings are stored as
+			   scancodes (they index the 512-entry key_state array; SDL2/3 keycodes
+			   like the arrows are 0x4000xxxx and cannot). Mouse and joystick codes
+			   live in their own small ranges above SDLK_LAST and pass through. */
+			if ( Key >= 0x40000000 || Key < SDLK_LAST )
+			{
+				SDL_Scancode _sc = SDL_GetScancodeFromKey( (SDL_Keycode) Key );
+				if ( _sc <= 0 || _sc >= SDLK_LAST )
+				{
+					done = true;
+					break;
+				}
+				Key = (int) _sc;
+			}
 			if ( KeyItem->Variable )
 			{
 				DefineKey( KeyItem, (VirtualKeycode) Key );

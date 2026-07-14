@@ -21,7 +21,9 @@ extern render_info_t render_info;
 extern GLenum render_last_gl_error;
 
 // TODO invalid pointer
-#if defined(MACOSX) && SDL_VERSION_ATLEAST(2,0,0)
+// Under SDL2 (GL3 build) we drop the GLU dependency entirely and map GL error codes
+// to strings inline - avoids linking glu32 with mismatched calling convention.
+#if SDL_VERSION_ATLEAST(2,0,0)
 #define gluErrorString(e)\
 	(e == 0x0500 ? "invalid enumerant" : \
 	(e == 0x0501 ? "invalid value" : \
@@ -102,14 +104,6 @@ void   vao_cache_evict( GLuint vbuf, GLuint nbuf, GLuint ibuf );
 void * shadow_create( GLuint id, int size );
 void * shadow_get( GLuint id, int * size );
 void   shadow_free( GLuint id );
-
-/* Context generation, bumped by gl_context_lost_reset when SDL_SetVideoMode has
-   destroyed the GL context (SDL 1.2 on Windows). Buffer handles created before
-   the bump belong to the dead context: FSReleaseRenderObject must not delete or
-   cache-evict them, because the same numeric ids may already name freshly created
-   buffers in the new context. */
-extern unsigned render_ctx_gen;
-void gl_context_lost_reset( void );
 
 #endif // GL != 1
 

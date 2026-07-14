@@ -121,6 +121,14 @@ bool sound_init( void )
 	if(!Device)
 		return false;
 
+	/* log which device was actually opened (the enumeration above only lists candidates) */
+	{
+		ALCint freq = 0;
+		alcGetIntegerv( Device, ALC_FREQUENCY, 1, &freq );
+		DebugPrintf("openal: opened device='%s' freq=%d\n",
+			alcGetString(Device, ALC_DEVICE_SPECIFIER), freq);
+	}
+
 	Context = alcCreateContext(Device,NULL);
 	if(!Context)
 		return false;
@@ -285,6 +293,7 @@ sound_buffer_t * sound_load(char *path)
 	ALenum format;
 	SDL_AudioSpec wav_spec;
 	u_int8_t *wav_buffer;
+	Uint32 wav_len;
 	sound_buffer_t * buffer;
 	char * file_path = convert_path(path);
 
@@ -309,7 +318,11 @@ sound_buffer_t * sound_load(char *path)
 		return NULL;
 	}
 
-	if( SDL_LoadWAV(file_path, &wav_spec, &wav_buffer, &wav_spec.size) == NULL )
+	/* CAUTION: the length out-param must NOT alias a field of wav_spec
+	   (&wav_spec.size): SDL2's loader fills the spec after writing the length,
+	   clobbering it - OpenAL then gets a garbage-sized buffer and plays silence.
+	   This is why the SDL2 build never had sound. */
+	if( SDL_LoadWAV(file_path, &wav_spec, &wav_buffer, &wav_len) == NULL )
 	{
 		DebugPrintf("Could not open: %s\n", SDL_GetError());
 		alDeleteBuffers( 1, &buffer->id );
@@ -317,13 +330,16 @@ sound_buffer_t * sound_load(char *path)
 		return NULL;
 	}
 
+	DebugPrintf("sound_load: '%s' len=%u bytes freq=%d fmt=0x%x ch=%d\n",
+		file_path, (unsigned) wav_len, wav_spec.freq, wav_spec.format, wav_spec.channels);
+
 	if(wav_spec.format == AUDIO_U8 || wav_spec.format == AUDIO_S8) // 8 bit
 	{
 		// openal only supports usigned 8bit
 		if(wav_spec.format == AUDIO_S8)
 		{
 			int i;
-			for(i = 0; i < (int) wav_spec.size; i++)
+			for(i = 0; i < (int) wav_len; i++)
 				wav_buffer[i] ^= 0x80; // converts S8 to U8
 			DebugPrintf("sound_buffer: converted s8 to u8\n");
 		}
@@ -340,7 +356,7 @@ sound_buffer_t * sound_load(char *path)
 		if(wav_spec.format == AUDIO_U16)
 		{
 			int i;
-			for(i = 0;i < (int)wav_spec.size/2;i++)
+			for(i = 0;i < (int)wav_len/2;i++)
 				((u_int16_t*)wav_buffer)[i] ^= 0x8000; // converts U16 to S16
 			DebugPrintf("sound_buffer: converted u16 to s16\n");
 		}
@@ -353,7 +369,7 @@ sound_buffer_t * sound_load(char *path)
 	}
 
 	// Copy data into AL Buffer 0
-	alBufferData(buffer->id,format,wav_buffer,wav_spec.size,wav_spec.freq);
+	alBufferData(buffer->id,format,wav_buffer,wav_len,wav_spec.freq);
 	if ((error = alGetError()) != AL_NO_ERROR)
 	{
 		DebugPrintf("alBufferData: %s\n", alGetString(error));

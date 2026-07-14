@@ -44,51 +44,51 @@ USERCONFIG default_config = {
 	0,								// roll control...
 	0.05F,							// autolevel rate
 //	{ num_keys, { key list [ num_keys ] } },
-	{ 2,	{ SDLK_DOWN	} },					// pitch forward
-	{ 2,	{ SDLK_UP	} },					// pitch backward
-	{ 2,	{ SDLK_LEFT	} },					// yaw left
-	{ 2,	{ SDLK_RIGHT	} },				// yaw right
-	{ 2,	{ SDLK_q		} },				// roll left
-	{ 2,	{ SDLK_e		} },				// roll right
-	{ 1,	{ SDLK_1 } },						// slide left
-	{ 1,	{ SDLK_3 } },						// slide right
-	{ 1,	{ SDLK_KP_MINUS } },				// slide up
-	{ 1,	{ SDLK_KP_PLUS } },					// slide down
-	{ 1,	{ SDLK_a	} },					// forward
-	{ 1,	{ SDLK_z	} },					// backward
-	{ 1,	{ SDLK_LALT	} },					// slide
+	{ 2,	{ SDL_SCANCODE_DOWN	} },					// pitch forward
+	{ 2,	{ SDL_SCANCODE_UP	} },					// pitch backward
+	{ 2,	{ SDL_SCANCODE_LEFT	} },					// yaw left
+	{ 2,	{ SDL_SCANCODE_RIGHT	} },				// yaw right
+	{ 2,	{ SDL_SCANCODE_Q		} },				// roll left
+	{ 2,	{ SDL_SCANCODE_E		} },				// roll right
+	{ 1,	{ SDL_SCANCODE_1 } },						// slide left
+	{ 1,	{ SDL_SCANCODE_3 } },						// slide right
+	{ 1,	{ SDL_SCANCODE_KP_MINUS } },				// slide up
+	{ 1,	{ SDL_SCANCODE_KP_PLUS } },					// slide down
+	{ 1,	{ SDL_SCANCODE_A	} },					// forward
+	{ 1,	{ SDL_SCANCODE_Z	} },					// backward
+	{ 1,	{ SDL_SCANCODE_LALT	} },					// slide
 	{ 0, {}  },										// roll
-	{ 1,	{ SDLK_s	} },					// turbo
+	{ 1,	{ SDL_SCANCODE_S	} },					// turbo
 	{ 0, {}  },										// cruise faster
 	{ 0, {}  },										// cruise slower
 	{ 2,	{ LEFT_MOUSE } },					// fire primary
 	{ 2,	{ RIGHT_MOUSE } },					// fire secondary
-	{ 1,	{ SDLK_b } },						// fire mine
-	{ 1,	{ SDLK_PAGEDOWN } },					// select next primary
-	{ 1,	{ SDLK_PAGEUP } },					// select prev primary
-	{ 1,	{ SDLK_HOME } },					// select next secondary
-	{ 1,	{ SDLK_END } },						// select prev secondary
-	{ 1,	{ SDLK_r } },						// select rear view
-	{ 1,	{ SDLK_h } },						// toggle headlights
+	{ 1,	{ SDL_SCANCODE_B } },						// fire mine
+	{ 1,	{ SDL_SCANCODE_PAGEDOWN } },					// select next primary
+	{ 1,	{ SDL_SCANCODE_PAGEUP } },					// select prev primary
+	{ 1,	{ SDL_SCANCODE_HOME } },					// select next secondary
+	{ 1,	{ SDL_SCANCODE_END } },						// select prev secondary
+	{ 1,	{ SDL_SCANCODE_R } },						// select rear view
+	{ 1,	{ SDL_SCANCODE_H } },						// toggle headlights
 	{
-		{ 1, { SDLK_BACKQUOTE } },				// select primary #1
-		{ 1, { SDLK_1	} },					// select primary #2
-		{ 1, { SDLK_4	} },					// select primary #3
-		{ 1, { SDLK_3	} },					// select primary #4
-		{ 1, { SDLK_2	} },					// select primary #5
-		{ 1, { SDLK_5	} },					// select primary #6
+		{ 1, { SDL_SCANCODE_GRAVE } },				// select primary #1
+		{ 1, { SDL_SCANCODE_1	} },					// select primary #2
+		{ 1, { SDL_SCANCODE_4	} },					// select primary #3
+		{ 1, { SDL_SCANCODE_3	} },					// select primary #4
+		{ 1, { SDL_SCANCODE_2	} },					// select primary #5
+		{ 1, { SDL_SCANCODE_5	} },					// select primary #6
 	},
 	{
-		{ 1, { SDLK_6 } },						// select secondary #1
-		{ 1, { SDLK_7 } },						// select secondary #2
+		{ 1, { SDL_SCANCODE_6 } },						// select secondary #1
+		{ 1, { SDL_SCANCODE_7 } },						// select secondary #2
 		{ 0, {} 	},									// select secondary #3 (thief missile -- not used)
-		{ 1, { SDLK_8 } },						// select secondary #4
-		{ 1, { SDLK_9 } },						// select secondary #5
-		{ 1, { SDLK_0 } },						// select secondary #6
-		{ 1, { SDLK_MINUS } },					// select secondary #7
-		{ 1, { SDLK_y } },						// select secondary #8
-		{ 1, { SDLK_u } },						// select secondary #9
-		{ 1, { SDLK_i } },						// select secondary #10
+		{ 1, { SDL_SCANCODE_8 } },						// select secondary #4
+		{ 1, { SDL_SCANCODE_9 } },						// select secondary #5
+		{ 1, { SDL_SCANCODE_0 } },						// select secondary #6
+		{ 1, { SDL_SCANCODE_MINUS } },					// select secondary #7
+		{ 1, { SDL_SCANCODE_Y } },						// select secondary #8
+		{ 1, { SDL_SCANCODE_U } },						// select secondary #9
+		{ 1, { SDL_SCANCODE_I } },						// select secondary #10
 		{ 0, {}  },									// select secondary #11 (spider mine -- not used)
 	},
 	{ 0, {}  },										// drop primary
@@ -98,7 +98,7 @@ USERCONFIG default_config = {
 	{ 0, {}  },										// show messages
 	{ 0, {}  },										// show statistics
 	{ 0, {}  },										// show network info
-	{ 1, { SDLK_RETURN } },				// send text message
+	{ 1, { SDL_SCANCODE_RETURN } },				// send text message
 #ifdef PLAYER_SPEECH_TAUNTS
 	{ 0, {}  },					// send speech taunt
 #endif
@@ -162,51 +162,51 @@ USERCONFIG my_controls = {
 	0,								// roll control...
 	0.05F,							// autolevel rate
 //	{ num_keys, { key list [ num_keys ] } },
-	{ 2,	{ SDLK_UP	} },	// pitch forward
-	{ 2,	{ SDLK_DOWN	} },	// pitch backward
-	{ 2,	{ SDLK_LEFT	} },	// yaw left
-	{ 2,	{ SDLK_RIGHT	} },	// yaw right
-	{ 2,	{ SDLK_q		} },	// roll left
-	{ 2,	{ SDLK_e		} },	// roll right
-	{ 1,	{ SDLK_1 } },					// slide left
-	{ 1,	{ SDLK_3 } },					// slide right
-	{ 1,	{ SDLK_KP_MINUS } },					// slide up
-	{ 1,	{ SDLK_KP_PLUS } },						// slide down
-	{ 1,	{ SDLK_a	} },						// forward
-	{ 1,	{ SDLK_z	} },						// backward
-	{ 1,	{ SDLK_LALT	} },					// slide
+	{ 2,	{ SDL_SCANCODE_UP	} },	// pitch forward
+	{ 2,	{ SDL_SCANCODE_DOWN	} },	// pitch backward
+	{ 2,	{ SDL_SCANCODE_LEFT	} },	// yaw left
+	{ 2,	{ SDL_SCANCODE_RIGHT	} },	// yaw right
+	{ 2,	{ SDL_SCANCODE_Q		} },	// roll left
+	{ 2,	{ SDL_SCANCODE_E		} },	// roll right
+	{ 1,	{ SDL_SCANCODE_1 } },					// slide left
+	{ 1,	{ SDL_SCANCODE_3 } },					// slide right
+	{ 1,	{ SDL_SCANCODE_KP_MINUS } },					// slide up
+	{ 1,	{ SDL_SCANCODE_KP_PLUS } },						// slide down
+	{ 1,	{ SDL_SCANCODE_A	} },						// forward
+	{ 1,	{ SDL_SCANCODE_Z	} },						// backward
+	{ 1,	{ SDL_SCANCODE_LALT	} },					// slide
 	{ 0, {}  },										// roll
-	{ 1,	{ SDLK_s	} },						// turbo
+	{ 1,	{ SDL_SCANCODE_S	} },						// turbo
 	{ 0, {}  },										// cruise faster
 	{ 0, {}  },										// cruise slower
 	{ 2,	{ LEFT_MOUSE	} },	// fire primary
 	{ 2,	{ RIGHT_MOUSE	} },		// fire secondary
-	{ 1,	{ SDLK_b } },						// fire mine
-	{ 1,	{ SDLK_PAGEDOWN } },						// select next primary
-	{ 1,	{ SDLK_PAGEUP } },					// select prev primary
-	{ 1,	{ SDLK_HOME } },						// select next secondary
-	{ 1,	{ SDLK_END } },						// select prev secondary
-	{ 1,	{ SDLK_r } },						// select rear view
-	{ 1,	{ SDLK_h } },						// toggle headlights
+	{ 1,	{ SDL_SCANCODE_B } },						// fire mine
+	{ 1,	{ SDL_SCANCODE_PAGEDOWN } },						// select next primary
+	{ 1,	{ SDL_SCANCODE_PAGEUP } },					// select prev primary
+	{ 1,	{ SDL_SCANCODE_HOME } },						// select next secondary
+	{ 1,	{ SDL_SCANCODE_END } },						// select prev secondary
+	{ 1,	{ SDL_SCANCODE_R } },						// select rear view
+	{ 1,	{ SDL_SCANCODE_H } },						// toggle headlights
 	{
-		{ 1, { SDLK_BACKQUOTE } },				// select primary #1
-		{ 1, { SDLK_1	} },					// select primary #2
-		{ 1, { SDLK_4	} },					// select primary #3
-		{ 1, { SDLK_3	} },					// select primary #4
-		{ 1, { SDLK_2	} },					// select primary #5
-		{ 1, { SDLK_5	} },					// select primary #6
+		{ 1, { SDL_SCANCODE_GRAVE } },				// select primary #1
+		{ 1, { SDL_SCANCODE_1	} },					// select primary #2
+		{ 1, { SDL_SCANCODE_4	} },					// select primary #3
+		{ 1, { SDL_SCANCODE_3	} },					// select primary #4
+		{ 1, { SDL_SCANCODE_2	} },					// select primary #5
+		{ 1, { SDL_SCANCODE_5	} },					// select primary #6
 	},
 	{
-		{ 1, { SDLK_6 } },						// select secondary #1
-		{ 1, { SDLK_7 } },						// select secondary #2
+		{ 1, { SDL_SCANCODE_6 } },						// select secondary #1
+		{ 1, { SDL_SCANCODE_7 } },						// select secondary #2
 		{ 0, {} 	},									// select secondary #3 (thief missile -- not used)
-		{ 1, { SDLK_8 } },						// select secondary #4
-		{ 1, { SDLK_9 } },						// select secondary #5
-		{ 1, { SDLK_0 } },						// select secondary #6
-		{ 1, { SDLK_MINUS } },					// select secondary #7
-		{ 1, { SDLK_y } },						// select secondary #8
-		{ 1, { SDLK_u } },						// select secondary #9
-		{ 1, { SDLK_i } },						// select secondary #10
+		{ 1, { SDL_SCANCODE_8 } },						// select secondary #4
+		{ 1, { SDL_SCANCODE_9 } },						// select secondary #5
+		{ 1, { SDL_SCANCODE_0 } },						// select secondary #6
+		{ 1, { SDL_SCANCODE_MINUS } },					// select secondary #7
+		{ 1, { SDL_SCANCODE_Y } },						// select secondary #8
+		{ 1, { SDL_SCANCODE_U } },						// select secondary #9
+		{ 1, { SDL_SCANCODE_I } },						// select secondary #10
 		{ 0, {}  },									// select secondary #11 (spider mine -- not used)
 	},
 	{ 0, {}  },										// drop primary
@@ -216,7 +216,7 @@ USERCONFIG my_controls = {
 	{ 0, {}  },										// show messages
 	{ 0, {} },										// show statistics
 	{ 0, {} },										// show network info
-	{ 1, { SDLK_RETURN } },					// send text message
+	{ 1, { SDL_SCANCODE_RETURN } },					// send text message
 #ifdef PLAYER_SPEECH_TAUNTS
 	{ 0, {}  },					// send speech taunt
 #endif
@@ -275,8 +275,10 @@ USERCONFIG *player_config = &my_controls;
 
 char * get_key_name( int i )
 {
-	char * name = SDL_GetKeyName(i);
-	if(0==strcasecmp(name,"unknown key"))
+	/* bindings are SDL scancodes under SDL2/3: they fit the 512-entry key_state
+	   array and stay stable across keyboard layouts */
+	const char * name = SDL_GetScancodeName( (SDL_Scancode) i );
+	if(!name || !name[0] || 0==strcasecmp(name,"unknown key"))
 		return NULL;
 	return convert_char( ' ', '_', 
 		strdup(name)
@@ -1388,7 +1390,7 @@ read_config( USERCONFIG *u, char *cfg_name )
 	u->invert_pitch = 0;
 	u->mouse_x_sensitivity = 0.6F;
 	u->mouse_y_sensitivity = 0.6F;
-	u->send_msg.key[ 0 ] = SDLK_RETURN;
+	u->send_msg.key[ 0 ] = SDL_SCANCODE_RETURN;
 
 	// reset all joystick settings
 	ReInitJoysticks();

@@ -6,6 +6,7 @@
 #ifndef GL2_LOAD_H
 #define GL2_LOAD_H
 #if GL > 1
+#include "SDL_version.h"  /* SDL_VERSION_ATLEAST */
 #include "SDL_opengl.h"   /* PFN typedefs + GL enum constants */
 
 /* typedefs absent from this SDL 1.2 glext snapshot */
@@ -14,10 +15,19 @@ typedef void (APIENTRYP FSKPFNGLDRAWELEMENTSBASEVERTEXPROC)(GLenum mode, GLsizei
 typedef void (APIENTRYP FSKPFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint *arrays);
 typedef void (APIENTRYP FSKPFNGLBINDVERTEXARRAYPROC)(GLuint array);
 typedef void (APIENTRYP FSKPFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint *arrays);
+typedef const GLubyte * (APIENTRYP FSKPFNGLGETSTRINGIPROC)(GLenum name, GLuint index);
 
 extern PFNGLATTACHSHADERPROC glAttachShader;
 extern PFNGLBINDBUFFERPROC glBindBuffer;
+#if SDL_VERSION_ATLEAST(2,0,0)
+/* SDL2's SDL_opengl.h already prototypes glBlendColor (GL 1.4 core). Redeclaring it as
+   a function pointer here clashes (C2365). gl2_load.c instead defines a real forwarding
+   glBlendColor() that calls the runtime-loaded pointer - matches the prototype, links
+   the symbol that opengl32.lib doesn't export. Under SDL 1.2 (no prototype) keep the
+   plain pointer as before. */
+#else
 extern PFNGLBLENDCOLORPROC glBlendColor;
+#endif
 extern PFNGLBUFFERDATAPROC glBufferData;
 extern PFNGLBUFFERSUBDATAPROC glBufferSubData;
 extern PFNGLCOMPILESHADERPROC glCompileShader;
@@ -48,6 +58,7 @@ extern FSKPFNGLDRAWELEMENTSBASEVERTEXPROC glDrawElementsBaseVertex;
 extern FSKPFNGLGENVERTEXARRAYSPROC glGenVertexArrays;
 extern FSKPFNGLBINDVERTEXARRAYPROC glBindVertexArray;
 extern FSKPFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays;
+extern FSKPFNGLGETSTRINGIPROC glGetStringi;   /* GL3 core: opengl32.lib lacks it */
 
 void gl2_load_functions(void);
 #endif /* GL > 1 */

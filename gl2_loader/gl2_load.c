@@ -5,7 +5,16 @@
 
 PFNGLATTACHSHADERPROC glAttachShader = NULL;
 PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+#if SDL_VERSION_ATLEAST(2,0,0)
+/* forwarding wrapper - SDL2 prototypes glBlendColor, opengl32.lib doesn't export it */
+static PFNGLBLENDCOLORPROC p_glBlendColor = NULL;
+void APIENTRY glBlendColor( GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha )
+{
+	if ( p_glBlendColor ) p_glBlendColor( red, green, blue, alpha );
+}
+#else
 PFNGLBLENDCOLORPROC glBlendColor = NULL;
+#endif
 PFNGLBUFFERDATAPROC glBufferData = NULL;
 PFNGLBUFFERSUBDATAPROC glBufferSubData = NULL;
 PFNGLCOMPILESHADERPROC glCompileShader = NULL;
@@ -36,6 +45,7 @@ FSKPFNGLDRAWELEMENTSBASEVERTEXPROC glDrawElementsBaseVertex = NULL;
 FSKPFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
 FSKPFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
 FSKPFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
+FSKPFNGLGETSTRINGIPROC glGetStringi = NULL;
 
 static int gl2_missing = 0;
 static void *gl2_get(const char *name)
@@ -50,7 +60,11 @@ void gl2_load_functions(void)
     gl2_missing = 0;
     glAttachShader = (PFNGLATTACHSHADERPROC) gl2_get("glAttachShader");
     glBindBuffer = (PFNGLBINDBUFFERPROC) gl2_get("glBindBuffer");
+#if SDL_VERSION_ATLEAST(2,0,0)
+    p_glBlendColor = (PFNGLBLENDCOLORPROC) gl2_get("glBlendColor");
+#else
     glBlendColor = (PFNGLBLENDCOLORPROC) gl2_get("glBlendColor");
+#endif
     glBufferData = (PFNGLBUFFERDATAPROC) gl2_get("glBufferData");
     glBufferSubData = (PFNGLBUFFERSUBDATAPROC) gl2_get("glBufferSubData");
     glCompileShader = (PFNGLCOMPILESHADERPROC) gl2_get("glCompileShader");
@@ -81,6 +95,7 @@ void gl2_load_functions(void)
     glGenVertexArrays = (FSKPFNGLGENVERTEXARRAYSPROC) gl2_get("glGenVertexArrays");
     glBindVertexArray = (FSKPFNGLBINDVERTEXARRAYPROC) gl2_get("glBindVertexArray");
     glDeleteVertexArrays = (FSKPFNGLDELETEVERTEXARRAYSPROC) gl2_get("glDeleteVertexArrays");
+    glGetStringi = (FSKPFNGLGETSTRINGIPROC) gl2_get("glGetStringi");
     DebugPrintf("gl2_load: loaded GL2+ functions (%d missing)\n", gl2_missing);
 }
 #endif /* GL > 1 */

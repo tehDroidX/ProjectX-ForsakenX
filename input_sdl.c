@@ -33,28 +33,19 @@ void input_grab( bool grab )
 	if( render_info.fullscreen )
 	{
 		input_grabbed = true;
-#if SDL_VERSION_ATLEAST(2,0,0)
+		/* relative mouse mode delivers unbounded deltas (no cursor, no window-edge
+		   clamping - without it the view stops when the hidden cursor hits the
+		   window border) */
+		SDL_SetRelativeMouseMode( SDL_TRUE );
 		SDL_SetWindowGrab( render_info.window, SDL_TRUE );
-#else
-		SDL_WM_GrabInput( SDL_GRAB_ON );
-#endif
-		SDL_ShowCursor( SDL_DISABLE );
 		return;
 	}
 	// window mode
 	input_grabbed = grab;
 
-#ifdef LUA_BOT
-	SDL_WM_GrabInput( SDL_GRAB_OFF );
-	SDL_ShowCursor( SDL_ENABLE );
-#else
-	#if SDL_VERSION_ATLEAST(2,0,0)
+	SDL_SetRelativeMouseMode( grab ? SDL_TRUE : SDL_FALSE );
 	SDL_SetWindowGrab( render_info.window, grab ? SDL_TRUE : SDL_FALSE );
-	#else
-	SDL_WM_GrabInput( grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
-	#endif
 	SDL_ShowCursor( grab ? SDL_DISABLE : SDL_ENABLE );
-#endif
 
 	//DebugPrintf("input state: %s\n",(grab?"grabbed":"free"));
 }
@@ -247,11 +238,17 @@ void app_keyboard( SDL_KeyboardEvent * key )
 	}
 	if( key->type == SDL_KEYDOWN )
 	{
+#if SDL_VERSION_ATLEAST(2,0,0)
+		/* SDL2 dropped keysym.unicode; text goes through SDL_TEXTINPUT instead.
+		   For menu/gameplay controls the keysym is sufficient. */
+		input_buffer_send( key->keysym.sym );
+#else
 		input_buffer_send(
-			key->keysym.unicode ? 
+			key->keysym.unicode ?
 				key->keysym.unicode :
 				key->keysym.sym
 		);
+#endif
 	}
 }
 

@@ -136,6 +136,7 @@ static void set_opengl_settings( void )
 	// BPP should be left alone to match whatever the desktop is at.
 
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER,	  1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,		 24);	/* the port never requested a depth buffer, so GL reported 0 bpp depth and geometry z-fought */
 
 #if SDL_VERSION_ATLEAST(2,0,0)
 #if GL == 3
@@ -257,16 +258,19 @@ static bool create_video_surface( u_int32_t window_flags, u_int32_t renderer_fla
 		Msg("main_sdl: failed to create window: %s\n",SDL_GetError());
 		return false;
 	}
-	render_info.renderer = SDL_CreateRenderer(
-		render_info.window,
-		-1,
-		renderer_flags
-		);
-	if(!render_info.renderer)
+	// The port used SDL_CreateRenderer here, but that owns its own GL context and does
+	// NOT make one current for the raw GL calls the renderer issues (glGetString etc.
+	// returned NULL -> crash). Create a real GL context and make it current instead.
+	(void) renderer_flags;
+	render_info.glcontext = SDL_GL_CreateContext( render_info.window );
+	if(!render_info.glcontext)
 	{
-		Msg("main_sdl: failed to create renderer: %s\n",SDL_GetError());
+		Msg("main_sdl: failed to create GL context: %s\n",SDL_GetError());
 		return false;
 	}
+	SDL_GL_MakeCurrent( render_info.window, render_info.glcontext );
+	SDL_GL_SetSwapInterval( render_info.vsync ? 1 : 0 );
+	render_info.renderer = NULL;
 
   #else
 	render_info.screen = SDL_SetVideoMode(
@@ -348,10 +352,9 @@ bool sdl_init_video( void )
 
 void sdl_render_present( render_info_t * info )
 {
-#if !SDL_VERSION_ATLEAST(2,0,0)
-	/* Debug: FSKDUMP=N dumps the GL framebuffer to a rotating set of files
-	   gl2_dump_<0-5>.ppm every N frames. Used to verify rendering correctness
-	   without screen-scraping. Off unless the environment variable is set. */
+	/* Debug: FSKDUMP=N dumps the GL framebuffer to gl2_dump_<0-5>.ppm every N frames.
+	   Used to verify rendering correctness without screen-scraping. Off unless env set.
+	   Works under both SDL1.2 (GL2) and SDL2 (GL3) - it only reads the GL framebuffer. */
 	{
 		static int req = -1;
 		static long frames = 0;
@@ -383,9 +386,8 @@ void sdl_render_present( render_info_t * info )
 			}
 		}
 	}
-#endif
 #if SDL_VERSION_ATLEAST(2,0,0)
-	SDL_RenderPresent(info->renderer);
+	SDL_GL_SwapWindow(info->window);
 #else
 	SDL_GL_SwapBuffers();
 #endif

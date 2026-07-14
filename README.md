@@ -53,60 +53,50 @@ The upstream readme is preserved as `README-upstream.md`.
 
 ---
 
-## Branch `gl2-sdl1.2` - GL2 renderer made playable (GLSL 120 + SDL 1.2 + OpenAL)
+## Branch `gl3.2-sdl2.30` - GL 3.2 core + SDL 2.30.9 (incl. the historic SDL2 sound fix)
 
-Adds a self-contained MSVC build pipeline plus the fixes that take the
-GL2 backend from ~20 fps to ~500 fps in combat.
+SDL2 port of the GL3 backend, plus the input and sound fixes that make an
+SDL2 build of this game actually playable for the first time.
 
 ### Build
-* Visual Studio Build Tools (x86), then run
-  `build\preview\compile-client.bat` and `build\preview\link-client.bat`;
-  this produces `projectx_client_gl2.exe`. The scripts locate Visual
-  Studio automatically and work from any checkout location.
-* Copy the exe into a stock ProjectX 1.18.2547 install.
-  All required import libs/headers ship in `build/preview/deps/`
-  (MSVC-native .lib files - do NOT link MinGW .a archives, the ABI differs).
-* `build/preview/deps/OpenAL32.dll` is openal-soft 1.25.2 (Win32), a
-  recommended drop-in replacement for the very old DLL in the retail folder.
+`build\preview\compile-client.bat` then `link-client.bat` produce
+`projectx_client_gl3.exe`. Ship `SDL2.dll` (in `build/preview/deps/`) next
+to the exe; `deps/OpenAL32.dll` is openal-soft 1.25.2 (recommended).
 
-### Fixes in this branch (on top of gl1-sdl1.2)
-1. **Windows GL2+ loader** (`gl2_loader/`): opengl32.lib only exports GL 1.1;
-   every GL2+ entry point is fetched at runtime via `SDL_GL_GetProcAddress`.
-2. **Ortho/2D pipeline**: the vertex shader's ortho branch was disabled
-   (menus/HUD never drew); TLVERTEX.w is rhw, so 2D positions must be fed as
-   `vec4(tlpos.xy, 0, 1)`; `near`/`far` renamed (windows.h macros).
-3. **VAO cache keyed by GL buffer handles**: per-draw
-   `glVertexAttribPointer` / `glEnable/DisableVertexAttribArray` (about nine
-   calls per draw, ~15 us each on this context) capped the game at ~20 fps.
-   A vertex array object records the layout once. The VAO must NOT live in
-   the RENDEROBJECT struct: transexe.c queues transparent objects *by value*,
-   which leaked one VAO per effect per frame (framerate melted as soon as
-   projectiles flew). Keying the cache off the stable buffer handles makes
-   all copies of an object share one VAO.
-4. **CPU shadow buffers** (`shadow_*` in render_gl_shared.c): FSLock* used to
-   hand game code the `glMapBuffer` pointer - write-combined, uncached
-   memory. The per-frame vertex work (InterpFrames morph animation,
-   per-vertex lighting, effect recolouring) runs 10-30x slower there;
-   ModelDisp burned 30-100 ms per frame once effects piled up. FSLock* now
-   returns a persistent malloc'd shadow copy (exactly what the GL1 backend
-   does) and FSUnlock* uploads it with a single `glBufferSubData`. This is
-   the rewrite the original comment in render_gl2.c asked for.
-5. **mvp uniform location cached** per program (previously a string lookup
-   per moving object).
-6. **`CHECK_GL_ERRORS` compiled out by default** (define `CHECK_GL` to
-   re-enable); calling glGetError several times per draw costs ~10x fps.
-7. **In-game video mode changes with GL context loss recovery**: SDL 1.2 on
-   Windows recreates the GL context on SDL_SetVideoMode, killing every
-   texture/VBO/VAO/program - GL1 shrugs that off, GL2 used to crash, so both
-   the fullscreen toggle and the resolution menu were dead on GL2. Now
-   `gl_context_lost_reset()` drops the CPU-side caches (VAO cache, shadow
-   copies) and the stale shader handles before the mode switch, and a context
-   generation counter stamped into every render object stops releases of
-   old-context objects from deleting same-numbered buffers that the reload
-   has just created in the new context. After that the normal reinit path
-   (shader rebuild in render_init, full texture/buffer reload via InitView)
-   brings everything back - fullscreen toggle and resolution changes work
-   in-game exactly like on GL1.
-8. Debug helpers (opt-in via environment variables): `FSKPERF=1` logs an FPS
-   line, `FSKDUMP=N` dumps the GL framebuffer to `gl2_dump_<0-5>.ppm` every
-   N frames.
+### Fixes in this branch (on top of gl2-sdl1.2)
+1. **Real GL context under SDL2**: the old SDL2 path used
+   `SDL_CreateRenderer`, which never makes a GL context current - every raw
+   GL call the game issues hit a dead context (`glGetString` returned NULL).
+   Now: `SDL_GL_CreateContext` + `SDL_GL_MakeCurrent` + `SDL_GL_SwapWindow`,
+   GL 3.2 core profile, 24-bit depth buffer explicitly requested.
+2. **glBlendColor**: SDL2's SDL_opengl.h prototypes it, so the loader defines
+   a forwarding function instead of a pointer. `glGetStringi` added to the
+   loader, and the loader now runs at the top of `render_init()` because
+   print_info/detect_caps need glGetStringi under core profiles.
+3. **Working in-game video settings** (menu + Shift+F12): picking a concrete
+   resolution switches to an exclusive fullscreen mode of that size
+   (`SDL_SetWindowDisplayMode` + `SDL_WINDOW_FULLSCREEN`) or resizes and
+   recenters the window in windowed mode; the "default" entry keeps the
+   borderless desktop fullscreen. The GL context survives every variant, and
+   all window-geometry state the game reads (mode index, aspect ratio, HUD
+   scale, 2D y-flip, saved config) is kept in sync with the real drawable
+   size.
+4. **Keyboard bindings normalised to scancodes**: bindings index a 512-entry
+   key-state array fed by `SDL_GetKeyboardState` (scancodes), but the config
+   defaults were SDL keycodes. SDL2 keycodes for arrows etc. are 0x4000xxxx -
+   they cannot index that array (and were even misclassified as joystick
+   codes), which is why ship navigation was dead on SDL2 builds. Defaults,
+   key-name resolution (`SDL_GetScancodeName`) and the rebinding menu
+   (keycode -> `SDL_GetScancodeFromKey`) all live in scancode space now.
+   Config files store key *names* and are matched case-insensitively, so
+   existing configs keep working.
+5. **Relative mouse mode**: without it the hidden cursor stops at the window
+   border and mouse deltas die with it (the "mouse hits invisible walls"
+   bug).
+6. **The SDL2 sound fix**: `sound_load` passed `&wav_spec.size` as
+   SDL_LoadWAV's length out-parameter - aliasing a field of the very spec
+   SDL fills. SDL 1.2's internal write order let the value survive; SDL2
+   clobbers it, so OpenAL received garbage-sized buffers and played silence
+   while reporting AL_PLAYING with no error. A separate `wav_len` variable
+   fixes it. This is most likely why past SDL2 builds of the port "had no
+   sound".

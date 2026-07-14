@@ -4469,7 +4469,7 @@ bool MainGame( void ) // bjd
 
   MenuProcess(); // menu keys are processed here
   ProcessGameKeys(); // here is where we process F keys
-
+ 
   ScreenPolyProcess();
 
 #ifdef INSIDE_BSP
@@ -5033,7 +5033,7 @@ bool RenderCurrentCamera( void )
   FindVisible( &CurrentCamera, &Mloadheader );
 
   BuildVisibleLightList( CurrentCamera.GroupImIn );
-
+  
   UpdateBGObjectsClipGroup( &CurrentCamera );
   UpdateEnemiesClipGroup( &CurrentCamera );
 
