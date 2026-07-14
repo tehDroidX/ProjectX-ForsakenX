@@ -30,5 +30,5 @@ if "%PV:~-1%"=="\" set "PV=%PV:~0,-1%"
 for %%i in ("%PV%\..\..") do set "ENG=%%~fi"
 set D=%PV%\deps\lib
 cd /d "%PV%"
-link /NOLOGO /OUT:"%PV%\projectx_client_sdl3.exe" /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /MACHINE:X86 obj-client\*.obj "%D%\SDL3.lib" "%D%\lua.lib" "%D%\luasocket.lib" "%D%\enet.lib" "%D%\libpng.lib" "%D%\zlib.lib" "%D%\OpenAL32.lib" opengl32.lib glu32.lib ws2_32.lib winmm.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib version.lib legacy_stdio_definitions.lib >"%PV%\link-client.log" 2>&1
+link /NOLOGO /OUT:"%PV%\projectx_client_gl4x.exe" /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup /MACHINE:X86 obj-client\*.obj "%D%\SDL3.lib" "%D%\lua.lib" "%D%\luasocket.lib" "%D%\enet.lib" "%D%\libpng.lib" "%D%\zlib.lib" "%D%\OpenAL32.lib" opengl32.lib glu32.lib ws2_32.lib winmm.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib version.lib legacy_stdio_definitions.lib >"%PV%\link-client.log" 2>&1
 echo LINK_EXIT=%ERRORLEVEL%

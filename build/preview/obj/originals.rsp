@@ -98,3 +98,4 @@ triggers.c
 util.c
 visi.c
 water.c
+render_gl4.c

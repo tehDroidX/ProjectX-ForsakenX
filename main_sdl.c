@@ -132,7 +132,7 @@ static void set_opengl_settings( void )
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,		 24);	/* the port never requested a depth buffer, so GL reported 0 bpp depth and geometry z-fought */
 
 #if SDL_VERSION_ATLEAST(2,0,0)
-#if GL == 3
+#if GL >= 3
 	// Request the newest core profile first (GL 4.6 is the final OpenGL version);
 	// create_video_surface() falls back to 3.2 core if the driver can't do 4.6.
 	// The GLSL 150 shaders are valid in any core context >= 3.2, so nothing else changes.

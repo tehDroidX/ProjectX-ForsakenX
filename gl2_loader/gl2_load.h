@@ -60,6 +60,27 @@ extern FSKPFNGLBINDVERTEXARRAYPROC glBindVertexArray;
 extern FSKPFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays;
 extern FSKPFNGLGETSTRINGIPROC glGetStringi;   /* GL3 core: opengl32.lib lacks it */
 
+#if GL >= 4
+/* GL 4.5 direct state access + GL 4.3 debug output (typedefs come from the current
+   glext.h that SDL3 ships as SDL_opengl_glext.h) */
+extern PFNGLCREATEBUFFERSPROC glCreateBuffers;
+extern PFNGLNAMEDBUFFERDATAPROC glNamedBufferData;
+extern PFNGLNAMEDBUFFERSUBDATAPROC glNamedBufferSubData;
+extern PFNGLCREATEVERTEXARRAYSPROC glCreateVertexArrays;
+extern PFNGLVERTEXARRAYVERTEXBUFFERPROC glVertexArrayVertexBuffer;
+extern PFNGLVERTEXARRAYELEMENTBUFFERPROC glVertexArrayElementBuffer;
+extern PFNGLVERTEXARRAYATTRIBFORMATPROC glVertexArrayAttribFormat;
+extern PFNGLVERTEXARRAYATTRIBBINDINGPROC glVertexArrayAttribBinding;
+extern PFNGLENABLEVERTEXARRAYATTRIBPROC glEnableVertexArrayAttrib;
+extern PFNGLBINDTEXTUREUNITPROC glBindTextureUnit;
+extern PFNGLCREATETEXTURESPROC glCreateTextures;
+extern PFNGLTEXTURESTORAGE2DPROC glTextureStorage2D;
+extern PFNGLTEXTURESUBIMAGE2DPROC glTextureSubImage2D;
+extern PFNGLTEXTUREPARAMETERFPROC glTextureParameterf;
+extern PFNGLGENERATETEXTUREMIPMAPPROC glGenerateTextureMipmap;
+extern PFNGLDEBUGMESSAGECALLBACKPROC glDebugMessageCallback;
+#endif
+
 void gl2_load_functions(void);
 #endif /* GL > 1 */
 #endif /* GL2_LOAD_H */

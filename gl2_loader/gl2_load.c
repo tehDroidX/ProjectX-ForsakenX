@@ -47,6 +47,25 @@ FSKPFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
 FSKPFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
 FSKPFNGLGETSTRINGIPROC glGetStringi = NULL;
 
+#if GL >= 4
+PFNGLCREATEBUFFERSPROC glCreateBuffers = NULL;
+PFNGLNAMEDBUFFERDATAPROC glNamedBufferData = NULL;
+PFNGLNAMEDBUFFERSUBDATAPROC glNamedBufferSubData = NULL;
+PFNGLCREATEVERTEXARRAYSPROC glCreateVertexArrays = NULL;
+PFNGLVERTEXARRAYVERTEXBUFFERPROC glVertexArrayVertexBuffer = NULL;
+PFNGLVERTEXARRAYELEMENTBUFFERPROC glVertexArrayElementBuffer = NULL;
+PFNGLVERTEXARRAYATTRIBFORMATPROC glVertexArrayAttribFormat = NULL;
+PFNGLVERTEXARRAYATTRIBBINDINGPROC glVertexArrayAttribBinding = NULL;
+PFNGLENABLEVERTEXARRAYATTRIBPROC glEnableVertexArrayAttrib = NULL;
+PFNGLBINDTEXTUREUNITPROC glBindTextureUnit = NULL;
+PFNGLCREATETEXTURESPROC glCreateTextures = NULL;
+PFNGLTEXTURESTORAGE2DPROC glTextureStorage2D = NULL;
+PFNGLTEXTURESUBIMAGE2DPROC glTextureSubImage2D = NULL;
+PFNGLTEXTUREPARAMETERFPROC glTextureParameterf = NULL;
+PFNGLGENERATETEXTUREMIPMAPPROC glGenerateTextureMipmap = NULL;
+PFNGLDEBUGMESSAGECALLBACKPROC glDebugMessageCallback = NULL;
+#endif
+
 static int gl2_missing = 0;
 static void *gl2_get(const char *name)
 {
@@ -96,6 +115,24 @@ void gl2_load_functions(void)
     glBindVertexArray = (FSKPFNGLBINDVERTEXARRAYPROC) gl2_get("glBindVertexArray");
     glDeleteVertexArrays = (FSKPFNGLDELETEVERTEXARRAYSPROC) gl2_get("glDeleteVertexArrays");
     glGetStringi = (FSKPFNGLGETSTRINGIPROC) gl2_get("glGetStringi");
+#if GL >= 4
+    glCreateBuffers = (PFNGLCREATEBUFFERSPROC) gl2_get("glCreateBuffers");
+    glNamedBufferData = (PFNGLNAMEDBUFFERDATAPROC) gl2_get("glNamedBufferData");
+    glNamedBufferSubData = (PFNGLNAMEDBUFFERSUBDATAPROC) gl2_get("glNamedBufferSubData");
+    glCreateVertexArrays = (PFNGLCREATEVERTEXARRAYSPROC) gl2_get("glCreateVertexArrays");
+    glVertexArrayVertexBuffer = (PFNGLVERTEXARRAYVERTEXBUFFERPROC) gl2_get("glVertexArrayVertexBuffer");
+    glVertexArrayElementBuffer = (PFNGLVERTEXARRAYELEMENTBUFFERPROC) gl2_get("glVertexArrayElementBuffer");
+    glVertexArrayAttribFormat = (PFNGLVERTEXARRAYATTRIBFORMATPROC) gl2_get("glVertexArrayAttribFormat");
+    glVertexArrayAttribBinding = (PFNGLVERTEXARRAYATTRIBBINDINGPROC) gl2_get("glVertexArrayAttribBinding");
+    glEnableVertexArrayAttrib = (PFNGLENABLEVERTEXARRAYATTRIBPROC) gl2_get("glEnableVertexArrayAttrib");
+    glBindTextureUnit = (PFNGLBINDTEXTUREUNITPROC) gl2_get("glBindTextureUnit");
+    glCreateTextures = (PFNGLCREATETEXTURESPROC) gl2_get("glCreateTextures");
+    glTextureStorage2D = (PFNGLTEXTURESTORAGE2DPROC) gl2_get("glTextureStorage2D");
+    glTextureSubImage2D = (PFNGLTEXTURESUBIMAGE2DPROC) gl2_get("glTextureSubImage2D");
+    glTextureParameterf = (PFNGLTEXTUREPARAMETERFPROC) gl2_get("glTextureParameterf");
+    glGenerateTextureMipmap = (PFNGLGENERATETEXTUREMIPMAPPROC) gl2_get("glGenerateTextureMipmap");
+    glDebugMessageCallback = (PFNGLDEBUGMESSAGECALLBACKPROC) gl2_get("glDebugMessageCallback");
+#endif
     DebugPrintf("gl2_load: loaded GL2+ functions (%d missing)\n", gl2_missing);
 }
 #endif /* GL > 1 */

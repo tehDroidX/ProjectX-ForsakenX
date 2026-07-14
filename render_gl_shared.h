@@ -105,6 +105,21 @@ void * shadow_create( GLuint id, int size );
 void * shadow_get( GLuint id, int * size );
 void   shadow_free( GLuint id );
 
+#if GL >= 4
+/* Fixed attribute/uniform locations, matching the layout() qualifiers in the
+   GLSL 460 shaders (render_gl_shared.c). With explicit locations every
+   glGetAttribLocation/glGetUniformLocation lookup disappears. */
+#define FSK_ATTR_POS      0
+#define FSK_ATTR_TLPOS    1
+#define FSK_ATTR_VCOLOR   2
+#define FSK_ATTR_VTEXC    3
+#define FSK_U_MVP         0
+#define FSK_U_ORTHO_PROJ  1
+#define FSK_U_ORTHO       2
+#define FSK_U_CK          3
+#define FSK_U_TEX         4
+#endif
+
 #endif // GL != 1
 
 void FSReleaseRenderObject(RENDEROBJECT *renderObject);

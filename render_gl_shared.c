@@ -158,6 +158,38 @@ static bool create_texture(LPTEXTURE *t, const char *path, u_int16_t *width, u_i
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
+#if GL >= 4
+	// DSA texture path: immutable storage with a full mip chain, uploaded and
+	// parameterised without touching any bind point.
+	if( ! *t )
+	{
+		int levels = 1, m = ( image.w > image.h ? image.w : image.h );
+		while ( m >>= 1 ) levels++;
+		texdata = malloc(sizeof(texture_t));
+		glCreateTextures(GL_TEXTURE_2D, 1, &texdata->id);
+		glTextureStorage2D(texdata->id, levels, GL_RGBA8, image.w, image.h);
+		glTextureSubImage2D(texdata->id, 0, 0, 0, image.w, image.h, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+		CHECK_GL_ERRORS;
+	}
+	// updates an existing texture (same dimensions - texture animation frames)
+	else
+	{
+		texdata = (texture_t *) *t;
+		glTextureSubImage2D(texdata->id, 0, 0, 0, image.w, image.h, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
+		CHECK_GL_ERRORS;
+	}
+
+	glTextureParameterf( texdata->id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST );
+	glTextureParameterf( texdata->id, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+	glTextureParameterf( texdata->id, GL_TEXTURE_WRAP_S, GL_REPEAT );
+	glTextureParameterf( texdata->id, GL_TEXTURE_WRAP_T, GL_REPEAT );
+	if(caps.anisotropic)
+		glTextureParameterf( texdata->id, GL_TEXTURE_MAX_ANISOTROPY_EXT, caps.anisotropic );
+
+	glGenerateTextureMipmap( texdata->id );
+
+#else // GL < 4
+
 	// create a new opengl texture
 	if( ! *t )
 	{
@@ -198,6 +230,7 @@ static bool create_texture(LPTEXTURE *t, const char *path, u_int16_t *width, u_i
 		return false;
 	}
 #endif
+#endif // GL >= 4
 
 	if ( render_error_description(0) )
 		return false;
@@ -279,6 +312,33 @@ static void print_info( void )
 	#define GLSL_VERT_OUT  "out"
 #endif
 
+#if GL >= 4
+// GLSL 460 with explicit locations (see FSK_* in render_gl_shared.h): the
+// attribute/uniform layout is fixed at compile time, no glGet*Location anywhere.
+static const char *default_vertex_shader =
+	"#version 460 core\n"
+	"layout(location=0) uniform mat4 mvp;\n"
+	"layout(location=1) uniform mat4 ortho_proj;\n"
+	"layout(location=2) uniform bool orthographic;\n"
+	"layout(location=0) in vec3 pos;\n"
+	"layout(location=1) in vec4 tlpos;\n"
+	"layout(location=2) in vec4 vcolor;\n"
+	"layout(location=3) in vec2 vtexc;\n"
+	"out vec4 color;\n"
+	"out vec2 texc;\n"
+	"void main(void)\n"
+	"{\n"
+	// TLVERTEX.w is rhw (1/w), .z is a screen ZValue - match the GL1 path:
+	// screen x/y only, z=0, w=1 (see the GL2/GL3 shader for the full note).
+	"    if (orthographic)\n"
+	"        gl_Position = ortho_proj * vec4(tlpos.xy, 0.0, 1.0);\n"
+	"    else\n"
+	"        gl_Position = mvp * vec4(pos, 1.0);\n"
+	"    color = vcolor.bgra;\n"
+	"    texc = vtexc;\n"
+	"}\n"
+;
+#else
 static const char *default_vertex_shader =
 	"#version " GLSL_VERSION "\n"
 	"\n"
@@ -312,6 +372,7 @@ static const char *default_vertex_shader =
 	"    texc = vtexc;\n"
 	"}\n"
 ;
+#endif // GL >= 4
 
 // Things a fragment shader must take into account:
 // - color-keying (discard if alpha <= 100/255; don't ask)
@@ -319,6 +380,28 @@ static const char *default_vertex_shader =
 // - texturing (possibly disabled)
 //   - "texturing_enabled" uniform var
 
+#if GL >= 4
+static const char *default_fragment_shader =
+	"#version 460 core\n"
+	"layout(location=3) uniform bool colorkeying_enabled;\n"
+	"layout(location=4) uniform bool texturing_enabled;\n"
+	"layout(binding=0) uniform sampler2D tex;\n"
+	"in vec4 color;\n"
+	"in vec2 texc;\n"
+	"layout(location=0) out vec4 fcolor;\n"
+	"void main(void)\n"
+	"{\n"
+	"    vec2 dx = dFdx(texc);\n"
+	"    vec2 dy = dFdy(texc);\n"
+	"    if ( texturing_enabled )\n"
+	"        fcolor = textureGrad(tex, texc, dx, dy) * color;\n"
+	"    else\n"
+	"        fcolor = color;\n"
+	"    if ( colorkeying_enabled && fcolor.a <= (100.0/255.0) )\n"
+	"        discard;\n"
+	"}\n"
+;
+#else
 static const char *default_fragment_shader =
 	"#version " GLSL_VERSION "\n"
 	"\n"
@@ -359,6 +442,7 @@ static const char *default_fragment_shader =
 #endif
 	"}\n"
 ;
+#endif // GL >= 4
 
 GLuint vertex_shader = 0;
 GLuint fragment_shader = 0;
@@ -542,6 +626,11 @@ static void detect_caps( void )
 	// OSX 10.8.2, AMD Radeon HD 6750M, GL 2.1 ATI-1.0.29, shader 1.20
 	caps.anisotropic = 16.0f;
   #else
+#if GL >= 4
+	/* anisotropic filtering is core since GL 4.6 - no extension check needed */
+	(void) i; (void) max;
+	glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &caps.anisotropic );
+#else
 	glGetIntegerv(GL_NUM_EXTENSIONS,&max);
 	for(i = 0; i < max; i++ )
 	{
@@ -549,12 +638,26 @@ static void detect_caps( void )
 		if(extension && strstr(extension, "GL_EXT_texture_filter_anisotropic"))
 			glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &caps.anisotropic );
 	}
+#endif
   #endif
 #endif
 
 	DebugPrintf("render: anisotropic filtering support = %s\n",
 		caps.anisotropic?"true":"false");
 }
+
+#if GL >= 4
+/* GL 4.3 debug output: driver-side error/performance messages pushed to the log,
+   without any glGetError polling. Opt-in: set FSKGLDEBUG=1 in the environment. */
+static void APIENTRY fsk_gl_debug_cb( GLenum source, GLenum type, GLuint id,
+	GLenum severity, GLsizei length, const GLchar *message, const void *userParam )
+{
+	(void) source; (void) id; (void) length; (void) userParam;
+	if ( severity == GL_DEBUG_SEVERITY_NOTIFICATION )
+		return;
+	DebugPrintf( "GL-DEBUG [type 0x%x sev 0x%x]: %s\n", type, severity, message );
+}
+#endif
 
 bool render_init( render_info_t * info )
 {
@@ -563,6 +666,15 @@ bool render_init( render_info_t * info )
 	   glGetStringi (core-profile extension enumeration), which lives in the loader.
 	   set_defaults() also calls this - it is idempotent. */
 	gl2_load_functions();
+#if GL >= 4
+	if ( getenv( "FSKGLDEBUG" ) && glDebugMessageCallback )
+	{
+		glEnable( GL_DEBUG_OUTPUT );
+		glEnable( GL_DEBUG_OUTPUT_SYNCHRONOUS );
+		glDebugMessageCallback( fsk_gl_debug_cb, NULL );
+		DebugPrintf( "render: GL debug output enabled\n" );
+	}
+#endif
 #endif
 	print_info();
 	detect_caps();
@@ -871,7 +983,13 @@ void ortho_update ( GLuint current_program )
 	float left, right, bottom, top, znear, zfar;
 	GLuint u_ortho_matrix;
 
+#if GL >= 4
+	u_ortho_matrix = FSK_U_ORTHO_PROJ;   /* explicit layout(location) */
+	(void) current_program;
+	if ( ortho_matrix_needs_update )
+#else
 	if ( ortho_matrix_needs_update && ( u_ortho_matrix = glGetUniformLocation( current_program, "ortho_proj" ) ) >= 0 )
+#endif
 	{
 		left = 0.0f;
 		right = render_info.ThisMode.w;
@@ -921,6 +1039,10 @@ void mvp_update( GLuint current_program )
 	/* Cache the "mvp" uniform location per program - mvp_update runs once per moving
 	   object (FSSetWorld marks it dirty) and a glGetUniformLocation string lookup per
 	   object is needlessly expensive. */
+#if GL >= 4
+	const GLint u_mvp = FSK_U_MVP;   /* explicit layout(location) - no lookup */
+	(void) current_program;
+#else
 	static GLuint mvp_prog = (GLuint)-1;
 	static GLint  u_mvp = -1;
 	if ( mvp_prog != current_program )
@@ -928,6 +1050,7 @@ void mvp_update( GLuint current_program )
 		mvp_prog = current_program;
 		u_mvp = glGetUniformLocation( current_program, "mvp" );
 	}
+#endif
 
 	if ( mvp_needs_update && u_mvp >= 0 )
 	{
@@ -1002,12 +1125,19 @@ LPVERTEXBUFFER _create_buffer( int size, GLenum type, GLenum gettype, GLenum usa
 	GLuint oldvbo;
 	GLuint vbo;
 
+#if GL >= 4
+	/* DSA: create + allocate without touching any bind point */
+	(void) gettype; (void) type; (void) oldvbo;
+	glCreateBuffers( 1, &vbo );
+	glNamedBufferData( vbo, size, NULL, usage );
+#else
 	glGenBuffers( 1, &vbo );
 	glGetIntegerv( gettype, &oldvbo );
 	glBindBuffer( type, vbo );
 	glBufferData( type, size, NULL, usage );
 	// Restore old binding
 	glBindBuffer( type, oldvbo );
+#endif
 
 	// paired CPU shadow copy - game code reads/writes this, FSUnlock* uploads it
 	shadow_create( vbo, size );
@@ -1081,14 +1211,24 @@ GLuint vao_cache_get( GLuint vbuf, GLuint nbuf, GLuint ibuf, int ortho, int *is_
 		if ( e->state == 0 )
 		{
 			vao_cache_entry_t *t = &vao_cache[ first_free >= 0 ? (unsigned) first_free : slot ];
+#if GL >= 4
+			glCreateVertexArrays( 1, &t->vao );   /* DSA calls need an initialized object */
+#else
 			glGenVertexArrays( 1, &t->vao );
+#endif
 			t->vbuf = vbuf; t->nbuf = nbuf; t->ibuf = ibuf; t->ortho = o; t->state = 1;
 			*is_new = 1;
 			return t->vao;
 		}
 	}
 	/* cache saturated (should never happen with a few hundred live buffers) */
-	{ GLuint vao = 0; glGenVertexArrays( 1, &vao ); *is_new = 1; return vao; }
+	{ GLuint vao = 0;
+#if GL >= 4
+	  glCreateVertexArrays( 1, &vao );
+#else
+	  glGenVertexArrays( 1, &vao );
+#endif
+	  *is_new = 1; return vao; }
 }
 
 void vao_cache_evict( GLuint vbuf, GLuint nbuf, GLuint ibuf )

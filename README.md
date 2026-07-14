@@ -53,38 +53,28 @@ The upstream readme is preserved as `README-upstream.md`.
 
 ---
 
-## Branch `gl4.6-sdl3.4` - SDL 3.4.12 + GL 4.6 core context
+## Branch `gl4.6-dsa-sdl3.4` - native GL 4.6 renderer (DSA + GLSL 460)
 
-Port of the SDL2 build to current SDL3. The renderer is unchanged (the
-GLSL 150 shaders are valid in any core context >= 3.2); the context is
-requested as GL 4.6 core with an automatic 3.2 fallback.
+Builds `projectx_client_gl4x.exe` (`-DGL=4`, new `render_gl4.c`): the same
+architecture as the GL3 backend (VAO cache + shadow buffers) rebuilt on
+modern GL:
 
-### Build
-`compile-client.bat` then `link-client.bat` produce
-`projectx_client_sdl3.exe`. Ship `SDL3.dll` next to the exe. Note that there
-is no SDL3main.lib anymore - the classic `main()` links with
-`/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup`.
+* **Direct State Access everywhere** - buffers (`glCreateBuffers`,
+  `glNamedBufferData/SubData`), vertex arrays (`glCreateVertexArrays` +
+  `glVertexArrayVertexBuffer/AttribFormat/AttribBinding/ElementBuffer`) and
+  textures (`glCreateTextures`, `glTextureStorage2D` immutable with a full
+  mip chain, `glTextureSubImage2D`, `glGenerateTextureMipmap`,
+  `glBindTextureUnit`) are created and updated without touching bind points.
+* **GLSL 460 with explicit `layout(location)`** for every attribute and
+  uniform (see the `FSK_*` constants in render_gl_shared.h) - zero
+  `glGet*Location` calls in the whole renderer.
+* anisotropic filtering read as a GL 4.6 core property.
+* **KHR_debug output** (opt-in: `FSKGLDEBUG=1`) - driver messages go to the
+  game log without any glGetError polling.
+* deliberately **no persistent-mapped buffers**: they hand back the same
+  write-combined memory class whose read-modify-write cost caused the
+  original framerate collapse; shadow copy + upload is the right shape for
+  this engine's per-frame vertex work.
 
-### SDL2 -> SDL3 changes (complete list)
-* headers: `/I deps/include/SDL3 /I deps/include` so `<SDL.h>` resolves
-* `SDL_Init` returns bool; the SDL_version struct is replaced by packed ints
-* `SDL_CreateWindow(title, w, h, flags)` (no position args); WINDOW_SHOWN gone
-* events renamed `SDL_EVENT_*`; window events are a top-level type range
-  (`SDL_EVENT_WINDOW_FIRST..LAST`) instead of one event with a sub-type
-* `SDL_KeyboardEvent.keysym.sym/mod` -> `.key/.mod`; `KMOD_*` -> `SDL_KMOD_*`
-* letter keycodes renamed `SDLK_a..z` -> `SDLK_A..Z`, BACKQUOTE -> GRAVE
-* `SDL_GetKeyboardState` returns `const bool*`
-* cursor: `SDL_ShowCursor()/SDL_HideCursor()`; grab: `SDL_SetWindowMouseGrab`;
-  relative mouse: `SDL_SetWindowRelativeMouseMode(window, bool)`
-* fullscreen: `SDL_SetWindowFullscreen(window, bool)`; exclusive modes for
-  concrete resolution picks via `SDL_GetClosestFullscreenDisplayMode` +
-  `SDL_SetWindowFullscreenMode` (NULL = borderless desktop for the "default"
-  entry), windowed resizes via `SDL_SetWindowSize`, settled with
-  `SDL_SyncWindow`; `SDL_GL_GetDrawableSize` -> `SDL_GetWindowSizeInPixels`
-* audio: `SDL_LoadWAV(path, spec, buf, &len)` returns bool, SDL_AudioSpec has
-  no `.size` field, there is no unsigned-16 format, `SDL_FreeWAV` -> `SDL_free`
-* `SDL_StartTextInput/StopTextInput` take the window
-* renderer flags removed (we drive our own GL context anyway)
-* joystick: SDL3 addresses sticks by instance id; the port's state arrays
-  index raw ids, so joystick support is disabled on this branch for now
-  (see the TODO in input_sdl.c) - keyboard and mouse are unaffected.
+Performance is on par with the GL3 branch (the engine is CPU-bound) - this
+branch exists to prove the codebase runs a clean, fully modern GL path.
