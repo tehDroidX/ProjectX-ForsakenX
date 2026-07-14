@@ -348,6 +348,42 @@ bool sdl_init_video( void )
 
 void sdl_render_present( render_info_t * info )
 {
+#if !SDL_VERSION_ATLEAST(2,0,0)
+	/* Debug: FSKDUMP=N dumps the GL framebuffer to a rotating set of files
+	   gl2_dump_<0-5>.ppm every N frames. Used to verify rendering correctness
+	   without screen-scraping. Off unless the environment variable is set. */
+	{
+		static int req = -1;
+		static long frames = 0;
+		if ( req < 0 ) { const char *e = getenv( "FSKDUMP" ); req = ( e && *e ) ? atoi( e ) : 0; }
+		if ( req > 0 && ( ++frames % req ) == 0 )
+		{
+			GLint vp[4];
+			glGetIntegerv( GL_VIEWPORT, vp );
+			if ( vp[2] > 0 && vp[3] > 0 )
+			{
+				int w = vp[2], h = vp[3], y;
+				unsigned char *px = (unsigned char *) malloc( (size_t) w * h * 3 );
+				if ( px )
+				{
+					FILE *f;
+					char name[32];
+					snprintf( name, sizeof(name), "gl2_dump_%ld.ppm", ( frames / req ) % 6 );
+					glReadPixels( 0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px );
+					f = fopen( name, "wb" );
+					if ( f )
+					{
+						fprintf( f, "P6\n%d %d\n255\n", w, h );
+						for ( y = h - 1; y >= 0; y-- )       /* GL origin is bottom-left; flip */
+							fwrite( px + (size_t) y * w * 3, 1, (size_t) w * 3, f );
+						fclose( f );
+					}
+					free( px );
+				}
+			}
+		}
+	}
+#endif
 #if SDL_VERSION_ATLEAST(2,0,0)
 	SDL_RenderPresent(info->renderer);
 #else

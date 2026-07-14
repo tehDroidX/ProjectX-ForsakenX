@@ -91,6 +91,7 @@ texture_devil.c
 texture_png.c
 texture_sdl.c
 timer.c
+title.c
 tload.c
 transexe.c
 trigarea.c

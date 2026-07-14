@@ -147,6 +147,7 @@ typedef struct RENDEROBJECT
 	LPARRAYBUFFER	lpNormalBuffer;
 	LPINDEXBUFFER	lpIndexBuffer;
 	bool			vbLocked;
+	unsigned		ctx_gen;	/* GL context generation the buffers were created in */
 	int numTextureGroups;
 	TEXTUREGROUP textureGroups[MAX_TEXTURE_GROUPS];
 } RENDEROBJECT;
@@ -157,6 +158,7 @@ typedef struct LEVELRENDEROBJECT
 	LPARRAYBUFFER	lpNormalBuffer;
 	LPINDEXBUFFER	lpIndexBuffer;
 	bool			vbLocked;
+	unsigned		ctx_gen;	/* GL context generation the buffers were created in */
 	int numTextureGroups;
 	TEXTUREGROUP textureGroups[MAX_LEVEL_TEXTURE_GROUPS];
 } LEVELRENDEROBJECT;

@@ -5,140 +5,117 @@ bool FSCreateVertexBuffer(RENDEROBJECT *renderObject, int numVertices)
 {
 	renderObject->lpVertexBuffer = create_buffer(
 		numVertices * sizeof(LVERTEX), GL_ARRAY_BUFFER, GL_STATIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 bool FSCreateDynamicVertexBuffer(RENDEROBJECT *renderObject, int numVertices)
 {
-	renderObject->lpVertexBuffer = create_buffer( 
+	renderObject->lpVertexBuffer = create_buffer(
 		numVertices * sizeof(LVERTEX), GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 
 bool FSCreateNormalBuffer(RENDEROBJECT *renderObject, int numNormals)
 {
-	renderObject->lpNormalBuffer = create_buffer( 
+	renderObject->lpNormalBuffer = create_buffer(
 		numNormals * sizeof(NORMAL), GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 bool FSCreateDynamicNormalBuffer(RENDEROBJECT *renderObject, int numNormals)
 {
-	renderObject->lpNormalBuffer = create_buffer( 
+	renderObject->lpNormalBuffer = create_buffer(
 		numNormals * sizeof(NORMAL), GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 
 bool FSCreateIndexBuffer(RENDEROBJECT *renderObject, int numIndices)
 {
-	renderObject->lpIndexBuffer = create_buffer( 
+	renderObject->lpIndexBuffer = create_buffer(
 		numIndices * 3 * sizeof(WORD), GL_ELEMENT_ARRAY_BUFFER, GL_STATIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 bool FSCreateDynamicIndexBuffer(RENDEROBJECT *renderObject, int numIndices)
 {
-	renderObject->lpIndexBuffer = create_buffer( 
+	renderObject->lpIndexBuffer = create_buffer(
 		numIndices * 3 * sizeof(WORD), GL_ELEMENT_ARRAY_BUFFER, GL_DYNAMIC_DRAW );
+	renderObject->ctx_gen = render_ctx_gen;
 	return true;
 }
 
-// In OpenGL you can only map buffers currently bound to a predefined
-// buffer binding point ("target"), so we save the currently bound
-// buffer and restore it on unlock.
+// Lock/Unlock used to glMapBuffer(GL_WRITE_ONLY) and hand game code the mapped
+// pointer. That pointer is write-combined, uncached memory: the per-frame vertex
+// work done between lock and unlock (InterpFrames morph animation, per-vertex
+// dynamic lighting, effect recolouring) issues sparse reads/writes there and ran
+// 10-30x slower than on the GL1 backend's plain malloc'd buffers - visible as the
+// framerate collapsing as soon as projectiles/effects (= lit, animated, per-frame
+// relocked models) piled up. Now FSLock* returns the buffer's persistent CPU
+// shadow copy (cached RAM, exactly like GL1) and FSUnlock* uploads it with a
+// single glBufferSubData - the rewrite the original port comment asked for.
 //
-// There is still the restriction that only one buffer of a certain
-// type may be locked at the same time. If this is a problem then this
-// should be rewritten to use a locally malloc'ed buffer and update
-// the real buffer on unlock using glBufferSubData.
+// Uploads go through the GL_ARRAY_BUFFER target even for index buffers: buffer
+// objects aren't typed, and this avoids touching GL_ELEMENT_ARRAY_BUFFER, which
+// is recorded in whatever VAO happens to be bound.
 
-static GLuint old_array_buf = 0;
-static GLuint old_index_buf = 0;
+static bool shadow_lock( void *handle, void **out, const char *who )
+{
+	*out = shadow_get( (GLuint)(size_t) handle, NULL );
+	if ( !*out )
+	{
+		DebugPrintf( "%s: no shadow copy for buffer %u\n", who, (unsigned)(size_t) handle );
+		return false;
+	}
+	return true;
+}
+
+static bool shadow_unlock( void *handle )
+{
+	int size = 0;
+	void *sh = shadow_get( (GLuint)(size_t) handle, &size );
+	if ( !sh )
+		return false;
+	glBindBuffer( GL_ARRAY_BUFFER, (GLuint)(size_t) handle );
+	glBufferSubData( GL_ARRAY_BUFFER, 0, size, sh );
+	CHECK_GL_ERRORS;
+	return true;
+}
 
 bool FSLockVertexBuffer(RENDEROBJECT *renderObject, LVERTEX **verts)
 {
-	if ( old_array_buf )
-	{
-		DebugPrintf( "Tried to lock more than one vertex buffer at once\n" );
-		return false;
-	}
-	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
-	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpVertexBuffer );
-	*verts = (LVERTEX *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
-	if(!*verts)
-	{
-		DebugPrintf("FSLockVertexBuffer: glMapBuffer returned NULL\n");
-		return false;
-	}
-	CHECK_GL_ERRORS;
-	return true;
+	return shadow_lock( renderObject->lpVertexBuffer, (void **) verts, "FSLockVertexBuffer" );
 }
 
 bool FSUnlockVertexBuffer(RENDEROBJECT *renderObject)
 {
-	bool ret = ( glUnmapBuffer( GL_ARRAY_BUFFER ) == GL_TRUE );
-	glBindBuffer( GL_ARRAY_BUFFER, old_array_buf );
-	old_array_buf = 0;
-	CHECK_GL_ERRORS;
-	return ret;
+	return shadow_unlock( renderObject->lpVertexBuffer );
 }
 
 bool FSLockNormalBuffer(RENDEROBJECT *renderObject, NORMAL **normals)
 {
-	if ( old_array_buf )
-	{
-		DebugPrintf( "Tried to lock more than one vertex buffer at once\n" );
-		return false;
-	}
-	glGetIntegerv( GL_ARRAY_BUFFER_BINDING, &old_array_buf );
-	glBindBuffer( GL_ARRAY_BUFFER, (GLuint) renderObject->lpNormalBuffer );
-	*normals = (NORMAL *) glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY );
-	if(!*normals)
-	{
-		DebugPrintf("FSLockNormalBuffer: glMapBuffer returned NULL\n");
-		return false;
-	}
-	CHECK_GL_ERRORS;
-	return true;
+	return shadow_lock( renderObject->lpNormalBuffer, (void **) normals, "FSLockNormalBuffer" );
 }
 
 bool FSUnlockNormalBuffer(RENDEROBJECT *renderObject)
 {
-	bool ret = ( glUnmapBuffer( GL_ARRAY_BUFFER ) == GL_TRUE );
-	glBindBuffer( GL_ARRAY_BUFFER, old_array_buf );
-	old_array_buf = 0;
-	CHECK_GL_ERRORS;
-	return ret;
+	return shadow_unlock( renderObject->lpNormalBuffer );
 }
 
 bool FSLockIndexBuffer(RENDEROBJECT *renderObject, WORD **indices)
 {
-	if ( old_index_buf )
-	{
-		DebugPrintf( "Tried to lock more than one index buffer at once\n" );
-		return false;
-	}
-	glGetIntegerv( GL_ELEMENT_ARRAY_BUFFER_BINDING, &old_index_buf );
-	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint) renderObject->lpIndexBuffer );
-	*indices = (WORD *) glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY );
-	if(!*indices)
-	{
-		DebugPrintf("FSLockIndexBuffer: glMapBuffer returned NULL\n");
-		return false;
-	}
-	CHECK_GL_ERRORS;
-	return true;
+	return shadow_lock( renderObject->lpIndexBuffer, (void **) indices, "FSLockIndexBuffer" );
 }
 
 bool FSUnlockIndexBuffer(RENDEROBJECT *renderObject)
 {
-	bool ret = ( glUnmapBuffer( GL_ELEMENT_ARRAY_BUFFER ) == GL_TRUE );
-	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, old_index_buf );
-	old_index_buf = 0;
-	CHECK_GL_ERRORS;
-	return ret;
+	return shadow_unlock( renderObject->lpIndexBuffer );
 }
 
 bool FSCreateDynamic2dVertexBuffer(RENDEROBJECT *renderObject, int numVertices)
 {
-	renderObject->lpVertexBuffer = create_buffer( 
+	renderObject->lpVertexBuffer = create_buffer(
 		numVertices * sizeof(TLVERTEX), GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW );
 	return true;
 }
@@ -164,6 +141,7 @@ bool FSLockPretransformedVertexBuffer(RENDEROBJECT *renderObject, TLVERTEX **ver
 
 bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool orthographic )
 {
+
 	static const struct
 	{
 		const char *name;
@@ -185,57 +163,80 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 		{ NULL,     0, 0,                0,        0  }
 	}, *attr;
 	//GLuint current_program;
-	GLuint u_ortho;
-	GLuint u_colorkey;
-	GLuint u_enabletex;
 	TEXTUREGROUP *group;
 	texture_t *texdata;
 	int loc;
 	int i;
 
-	glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpVertexBuffer );
-
-	if ( renderObject->lpIndexBuffer )
-		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderObject->lpIndexBuffer );
-	else
-		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
-
-	//glGetIntegerv( GL_CURRENT_PROGRAM, &current_program );
-	// assert( current_program != 0 );
-
-	CHECK_GL_ERRORS;
-
-	// Tell OpenGL about the buffer data layout
-	// see the LVERTEX and TLVERTEX definitions inside include/new3d.h
-	attr = orthographic ? ortho_attr : normal_attr;
-	for ( i=0; attr[i].name; i++ )
+	// Cache attribute/uniform locations once per program. Querying them on every
+	// draw call (glGet*Location does a driver-side string lookup) tanked GL2 to
+	// ~1/10th of GL1's framerate. current_program is stable, so cache and reuse.
+	static GLuint cached_prog = (GLuint)-1;
+	static GLint a_normal[4], a_ortho[4], a_vnormal, u_ortho_c, u_ck_c, u_tex_c;
+	if ( cached_prog != current_program )
 	{
-		loc = glGetAttribLocation( current_program, attr[i].name );
-		if (loc >= 0)
-		{
-			glVertexAttribPointer(
-				loc,
-				attr[i].components,
-				attr[i].type,
-				attr[i].normalized,
-				orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX),
-				attr[i].offset
-			);
-			glEnableVertexAttribArray( loc );
-		}
+		cached_prog = current_program;
+		for ( i = 0; normal_attr[i].name; i++ ) a_normal[i] = glGetAttribLocation( current_program, normal_attr[i].name );
+		for ( i = 0; ortho_attr[i].name;  i++ ) a_ortho[i]  = glGetAttribLocation( current_program, ortho_attr[i].name );
+		a_vnormal = glGetAttribLocation( current_program, "vnormal" );
+		u_ortho_c = glGetUniformLocation( current_program, "orthographic" );
+		u_ck_c    = glGetUniformLocation( current_program, "colorkeying_enabled" );
+		u_tex_c   = glGetUniformLocation( current_program, "texturing_enabled" );
 	}
 
-	CHECK_GL_ERRORS;
-
-	// tell it about the normal buffer
-	if ( renderObject->lpNormalBuffer )
+	// Vertex-format setup (glVertexAttribPointer + glEnable/DisableVertexAttribArray)
+	// costs ~15us per call on this SDL1 GL context and, repeated ~9x for every one of
+	// ~240 draws, was single-handedly capping GL2 at ~20 FPS. A vertex array object
+	// records the entire attribute layout + buffer bindings ONCE; every later frame
+	// just binds the VAO. The VAO is keyed off the (stable) buffer handles in a cache
+	// (NOT stored in the RENDEROBJECT, which is copied by value for transparent objects
+	// - that leaked a VAO every frame per projectile/effect). All copies of an object
+	// share one cached VAO; it's evicted when the buffers are freed.
 	{
-		glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpNormalBuffer );
-		loc = glGetAttribLocation( current_program, "vnormal" );
-		if (loc >= 0)
+		int vao_is_new;
+		GLuint vao = vao_cache_get(
+			(GLuint)(size_t) renderObject->lpVertexBuffer,
+			(GLuint)(size_t) renderObject->lpNormalBuffer,
+			(GLuint)(size_t) renderObject->lpIndexBuffer,
+			orthographic, &vao_is_new );
+		glBindVertexArray( vao );
+		if ( vao_is_new )
 		{
-			glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), 0 );
-			glEnableVertexAttribArray( loc );
+			glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpVertexBuffer );
+			if ( renderObject->lpIndexBuffer )
+				glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderObject->lpIndexBuffer );
+			else
+				glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+
+			// see the LVERTEX and TLVERTEX definitions inside include/new3d.h
+			attr = orthographic ? ortho_attr : normal_attr;
+			for ( i=0; attr[i].name; i++ )
+			{
+				loc = ( orthographic ? a_ortho : a_normal )[i];
+				if (loc >= 0)
+				{
+					glVertexAttribPointer(
+						loc,
+						attr[i].components,
+						attr[i].type,
+						attr[i].normalized,
+						orthographic ? sizeof(TLVERTEX) : sizeof(LVERTEX),
+						attr[i].offset
+					);
+					glEnableVertexAttribArray( loc );
+				}
+			}
+
+			if ( renderObject->lpNormalBuffer )
+			{
+				glBindBuffer( GL_ARRAY_BUFFER, renderObject->lpNormalBuffer );
+				loc = a_vnormal;
+				if (loc >= 0)
+				{
+					glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, sizeof(NORMAL), 0 );
+					glEnableVertexAttribArray( loc );
+				}
+			}
 		}
 	}
 
@@ -247,24 +248,23 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 	else
 		mvp_update( current_program );
 
-	// This uniform tells the vertex shader which matrix to use
-	if ((u_ortho = glGetUniformLocation(current_program, "orthographic")) >= 0)
-		glUniform1i( u_ortho, orthographic ? GL_TRUE : GL_FALSE );
+	if ( u_ortho_c >= 0 )
+		glUniform1i( u_ortho_c, orthographic ? GL_TRUE : GL_FALSE );
 
 	for ( i = 0; i < renderObject->numTextureGroups; i++ )
 	{
 		group = &renderObject->textureGroups[i];
-		if ( (u_colorkey = glGetUniformLocation(current_program, "colorkeying_enabled")) >= 0 )
-			glUniform1i( u_colorkey, group->colourkey ? GL_TRUE : GL_FALSE );
-		if ( (u_enabletex = glGetUniformLocation(current_program, "texturing_enabled")) >= 0 )
+		if ( u_ck_c >= 0 )
+			glUniform1i( u_ck_c, group->colourkey ? GL_TRUE : GL_FALSE );
+		if ( group->texture )
 		{
-			glUniform1i( u_enabletex, group->texture ? GL_TRUE : GL_FALSE );
-			if ( group->texture )
-			{
-				texdata = (texture_t *) group->texture;
-				glBindTexture( GL_TEXTURE_2D, texdata->id );
-			}
+			if ( u_tex_c >= 0 )
+				glUniform1i( u_tex_c, GL_TRUE );
+			texdata = (texture_t *) group->texture;
+			glBindTexture( GL_TEXTURE_2D, texdata->id );
 		}
+		else if ( u_tex_c >= 0 )
+			glUniform1i( u_tex_c, GL_FALSE );
 		glDrawElementsBaseVertex(
 			primitive_type,
 			group->numTriangles * 3,
@@ -276,21 +276,11 @@ bool draw_render_object( RENDEROBJECT *renderObject, int primitive_type, bool or
 
 	CHECK_GL_ERRORS;
 
-	for ( i=0; attr[i].name; i++ )
-	{
-		loc = glGetAttribLocation( current_program, attr[i].name );
-		if (loc >= 0)
-			glDisableVertexAttribArray( loc );
-	}
-
-	if ( renderObject->lpNormalBuffer )
-	{
-		loc = glGetAttribLocation( current_program, "vnormal" );
-		if (loc >= 0)
-			glDisableVertexAttribArray( loc );
-	}
-
-	CHECK_GL_ERRORS;
+	// A per-object VAO stays bound on exit. That is safe: every FSLock*/create_buffer
+	// path saves and restores the GL_ELEMENT_ARRAY_BUFFER binding it touches, and the
+	// GL_ARRAY_BUFFER binding is not VAO state - so no VAO's recorded layout is
+	// disturbed between draws. (We avoid binding VAO 0, which is invalid under a core
+	// profile.)
 
 	return true;
 }

@@ -4469,7 +4469,7 @@ bool MainGame( void ) // bjd
 
   MenuProcess(); // menu keys are processed here
   ProcessGameKeys(); // here is where we process F keys
- 
+
   ScreenPolyProcess();
 
 #ifdef INSIDE_BSP
@@ -5033,7 +5033,7 @@ bool RenderCurrentCamera( void )
   FindVisible( &CurrentCamera, &Mloadheader );
 
   BuildVisibleLightList( CurrentCamera.GroupImIn );
-  
+
   UpdateBGObjectsClipGroup( &CurrentCamera );
   UpdateEnemiesClipGroup( &CurrentCamera );
 
@@ -5291,6 +5291,14 @@ bool Our_CalculateFrameRate(void)
 
 			// average time per frame in milliseconds
 			avg_time_per_frame = (int)((1.0F / FPS) * 1000.0F);
+
+			/* opt-in perf logging: set FSKPERF=1 in the environment */
+			{
+				static int perflog = -1;
+				if ( perflog < 0 ) { const char *e = getenv( "FSKPERF" ); perflog = ( e && *e ) ? 1 : 0; }
+				if ( perflog )
+					DebugPrintf( "PERF: FPS %d avg %d ms\n", (int) FPS, avg_time_per_frame );
+			}
 
 			//
 			our_count = 0;

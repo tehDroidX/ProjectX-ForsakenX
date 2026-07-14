@@ -53,40 +53,60 @@ The upstream readme is preserved as `README-upstream.md`.
 
 ---
 
-## Branch `gl1-sdl1.2` - the multiplayer-join crash fix
+## Branch `gl2-sdl1.2` - GL2 renderer made playable (GLSL 120 + SDL 1.2 + OpenAL)
 
-**One line.** `render_gl_shared.c`, GL1 branch of `delete_buffer`:
-
-```c
-#define delete_buffer(b) free( b )      /* before: frees the address of the pointer FIELD */
-#define delete_buffer(b) free( *(b) )   /* after:  frees the malloc'd buffer              */
-```
-
-`FSReleaseRenderObject()` calls `delete_buffer(&renderObject->lpVertexBuffer)`.
-The old macro freed the *address of the struct field* instead of the buffer,
-so every released render object leaked its vertex/normal/index memory
-(the log fills with `un-malloced block` warnings).
-
-Why it crashes multiplayer joins: while the join loading screen streams
-pickups from the host, temporary render objects are created and released
-every frame. On maps where many pickups live in one visibility group the
-leak reaches roughly 220 MB/s; the 32-bit client exhausts its 2 GB address
-space and dies (exit code 3) before the join finishes. Singleplayer never
-streams, so it never crashed. Measured on a single-group test map with 40
-pickups: 5/5 crashes at about 1.9 GB VM without the fix; with it, memory
-plateaus and the join always succeeds.
+Adds a self-contained MSVC build pipeline plus the fixes that take the
+GL2 backend from ~20 fps to ~500 fps in combat.
 
 ### Build
+* Visual Studio Build Tools (x86), then run
+  `build\preview\compile-client.bat` and `build\preview\link-client.bat`;
+  this produces `projectx_client_gl2.exe`. The scripts locate Visual
+  Studio automatically and work from any checkout location.
+* Copy the exe into a stock ProjectX 1.18.2547 install.
+  All required import libs/headers ship in `build/preview/deps/`
+  (MSVC-native .lib files - do NOT link MinGW .a archives, the ABI differs).
+* `build/preview/deps/OpenAL32.dll` is openal-soft 1.25.2 (Win32), a
+  recommended drop-in replacement for the very old DLL in the retail folder.
 
-Run `build\preview\compile-client.bat` and then
-`build\preview\link-client.bat`; this produces `projectx_client_gl1t.exe`
-(GL=1, fixed-function renderer). The scripts locate Visual Studio
-automatically and work from any checkout location; all headers and MSVC
-import libs ship in `build/preview/deps` and `build/msvc-smoke/compat`.
-The tree is upstream master plus the one fix; the pipeline compiles every
-source straight from the tree root except two files under
-`build/preview/patched/`: `stats.c` (whitespace after line-continuation
-backslashes removed - MSVC rejects it) and `xmem.c` (one `char*` cast on a
-void-pointer arithmetic expression). Both are otherwise byte-identical to
-their root counterparts. Alternatively the branch also builds with upstream's own Makefile /
-VS solution.
+### Fixes in this branch (on top of gl1-sdl1.2)
+1. **Windows GL2+ loader** (`gl2_loader/`): opengl32.lib only exports GL 1.1;
+   every GL2+ entry point is fetched at runtime via `SDL_GL_GetProcAddress`.
+2. **Ortho/2D pipeline**: the vertex shader's ortho branch was disabled
+   (menus/HUD never drew); TLVERTEX.w is rhw, so 2D positions must be fed as
+   `vec4(tlpos.xy, 0, 1)`; `near`/`far` renamed (windows.h macros).
+3. **VAO cache keyed by GL buffer handles**: per-draw
+   `glVertexAttribPointer` / `glEnable/DisableVertexAttribArray` (about nine
+   calls per draw, ~15 us each on this context) capped the game at ~20 fps.
+   A vertex array object records the layout once. The VAO must NOT live in
+   the RENDEROBJECT struct: transexe.c queues transparent objects *by value*,
+   which leaked one VAO per effect per frame (framerate melted as soon as
+   projectiles flew). Keying the cache off the stable buffer handles makes
+   all copies of an object share one VAO.
+4. **CPU shadow buffers** (`shadow_*` in render_gl_shared.c): FSLock* used to
+   hand game code the `glMapBuffer` pointer - write-combined, uncached
+   memory. The per-frame vertex work (InterpFrames morph animation,
+   per-vertex lighting, effect recolouring) runs 10-30x slower there;
+   ModelDisp burned 30-100 ms per frame once effects piled up. FSLock* now
+   returns a persistent malloc'd shadow copy (exactly what the GL1 backend
+   does) and FSUnlock* uploads it with a single `glBufferSubData`. This is
+   the rewrite the original comment in render_gl2.c asked for.
+5. **mvp uniform location cached** per program (previously a string lookup
+   per moving object).
+6. **`CHECK_GL_ERRORS` compiled out by default** (define `CHECK_GL` to
+   re-enable); calling glGetError several times per draw costs ~10x fps.
+7. **In-game video mode changes with GL context loss recovery**: SDL 1.2 on
+   Windows recreates the GL context on SDL_SetVideoMode, killing every
+   texture/VBO/VAO/program - GL1 shrugs that off, GL2 used to crash, so both
+   the fullscreen toggle and the resolution menu were dead on GL2. Now
+   `gl_context_lost_reset()` drops the CPU-side caches (VAO cache, shadow
+   copies) and the stale shader handles before the mode switch, and a context
+   generation counter stamped into every render object stops releases of
+   old-context objects from deleting same-numbered buffers that the reload
+   has just created in the new context. After that the normal reinit path
+   (shader rebuild in render_init, full texture/buffer reload via InitView)
+   brings everything back - fullscreen toggle and resolution changes work
+   in-game exactly like on GL1.
+8. Debug helpers (opt-in via environment variables): `FSKPERF=1` logs an FPS
+   line, `FSKDUMP=N` dumps the GL framebuffer to `gl2_dump_<0-5>.ppm` every
+   N frames.

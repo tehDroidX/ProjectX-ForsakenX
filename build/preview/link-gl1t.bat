@@ -28,19 +28,7 @@ rem ---- all paths derive from this script's location -------------------------
 set "PV=%~dp0"
 if "%PV:~-1%"=="\" set "PV=%PV:~0,-1%"
 for %%i in ("%PV%\..\..") do set "ENG=%%~fi"
-set SMOKE=%ENG%\build\msvc-smoke
-set OBJ=%PV%\obj-client
-if not exist "%OBJ%" mkdir "%OBJ%"
-del /q "%OBJ%\*.obj" 2>nul
-set DEFS=/DWIN32 /D_X86_ /DGL=2 /DNET_ENET_2 /DBSP /DLUA_USE_APICHECK /DTEXTURE_PNG /DSOUND_SUPPORT /DSOUND_OPENAL ^
- /DDEBUG_ON /DDEBUG_COMP /DDEBUG_SPOTFX_SOUND /DDEBUG_VIEWPORT ^
- /D_CRT_SECURE_NO_WARNINGS /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /D_WINSOCK_DEPRECATED_NO_WARNINGS
-set INCS=/I"%SMOKE%\compat" /I"%SMOKE%\compat\SDL" /I"%ENG%" /I"%ENG%\gl2_loader" /I"%PV%\deps\include"
-cd /d "%ENG%"
-echo === compiling 100 originals ===
-cl /c /nologo /MD /std:c11 /W1 %DEFS% %INCS% /Fo"%OBJ%\\" @"%PV%\obj\originals.rsp" >"%PV%\cc-orig.log" 2>&1
-if errorlevel 1 (echo ORIG_FAILED & exit /b 1)
-echo === compiling 5 patched + gl2 loader ===
-cl /c /nologo /MD /std:c11 /W1 %DEFS% %INCS% /Fo"%OBJ%\\" "%PV%\patched\stats.c" "%PV%\patched\xmem.c" "%PV%\patched\main.c" "%PV%\patched\restart.c" "%PV%\patched\title.c" "%ENG%\gl2_loader\gl2_load.c" >"%PV%\cc-patched.log" 2>&1
-if errorlevel 1 (echo PATCHED_FAILED & exit /b 1)
-echo COMPILE_OK
+set D=%PV%\deps\lib
+cd /d "%PV%"
+link /NOLOGO /OUT:"%PV%\projectx_client_gl1t.exe" /SUBSYSTEM:WINDOWS /MACHINE:X86 obj-gl1t\*.obj "%D%\SDLmain.lib" "%D%\SDL.lib" "%D%\lua.lib" "%D%\luasocket.lib" "%D%\enet.lib" "%D%\libpng.lib" "%D%\zlib.lib" "%D%\OpenAL32.lib" opengl32.lib glu32.lib ws2_32.lib winmm.lib user32.lib gdi32.lib advapi32.lib shell32.lib ole32.lib version.lib legacy_stdio_definitions.lib >"%PV%\link-client.log" 2>&1
+echo LINK_EXIT=%ERRORLEVEL%

@@ -29,10 +29,10 @@ set "PV=%~dp0"
 if "%PV:~-1%"=="\" set "PV=%PV:~0,-1%"
 for %%i in ("%PV%\..\..") do set "ENG=%%~fi"
 set SMOKE=%ENG%\build\msvc-smoke
-set OBJ=%PV%\obj-client
+set OBJ=%PV%\obj-gl1t
 if not exist "%OBJ%" mkdir "%OBJ%"
 del /q "%OBJ%\*.obj" 2>nul
-set DEFS=/DWIN32 /D_X86_ /DGL=2 /DNET_ENET_2 /DBSP /DLUA_USE_APICHECK /DTEXTURE_PNG /DSOUND_SUPPORT /DSOUND_OPENAL ^
+set DEFS=/DWIN32 /D_X86_ /DGL=1 /DNET_ENET_2 /DBSP /DLUA_USE_APICHECK /DTEXTURE_PNG /DSOUND_SUPPORT /DSOUND_OPENAL ^
  /DDEBUG_ON /DDEBUG_COMP /DDEBUG_SPOTFX_SOUND /DDEBUG_VIEWPORT ^
  /D_CRT_SECURE_NO_WARNINGS /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /D_WINSOCK_DEPRECATED_NO_WARNINGS
 set INCS=/I"%SMOKE%\compat" /I"%SMOKE%\compat\SDL" /I"%ENG%" /I"%ENG%\gl2_loader" /I"%PV%\deps\include"

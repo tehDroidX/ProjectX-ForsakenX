@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include "main_sdl.h"
 #include "SDL_opengl.h"
+#include "gl2_load.h"
 
 extern render_info_t render_info;
 
@@ -36,6 +37,10 @@ extern GLenum render_last_gl_error;
 
 const char * render_error_description( int e );
 
+/* glGetError() forces a driver pipeline sync; calling it several times per draw
+ * call tanks the framerate (~10x on GL2). Only run the checks when CHECK_GL is
+ * defined at build time - otherwise this is a no-op. */
+#ifdef CHECK_GL
 #define CHECK_GL_ERRORS \
 	do \
 	{ \
@@ -47,6 +52,9 @@ const char * render_error_description( int e );
 				gluErrorString(e),  __FILE__, __LINE__ ); \
 		} \
 	} while (0)
+#else
+#define CHECK_GL_ERRORS do {} while (0)
+#endif
 
 
 typedef struct { float anisotropic; } gl_caps_t;
@@ -79,6 +87,29 @@ LPVERTEXBUFFER _create_buffer( int size, GLenum type, GLenum gettype, GLenum usa
 
 #define create_buffer( size, type, usage ) \
         _create_buffer( size, type, type ## _BINDING, usage )
+
+/* VAO cache keyed by GL buffer handles - see render_gl_shared.c. The RENDEROBJECT
+   struct is copied by value (transexe.c) so a per-struct VAO leaked every frame;
+   keying off the stable buffer handles makes all copies share one VAO. */
+GLuint vao_cache_get( GLuint vbuf, GLuint nbuf, GLuint ibuf, int ortho, int *is_new );
+void   vao_cache_evict( GLuint vbuf, GLuint nbuf, GLuint ibuf );
+
+/* CPU shadow copy per GL buffer - see render_gl_shared.c. FSLock* hands game code
+   this malloc'd pointer (cached RAM, like the GL1 backend) instead of a glMapBuffer
+   pointer (write-combined uncached memory, where the per-frame vertex work of
+   InterpFrames / vertex lighting was 10-30x slower); FSUnlock* uploads it with one
+   glBufferSubData. This is the rewrite the original port comment asked for. */
+void * shadow_create( GLuint id, int size );
+void * shadow_get( GLuint id, int * size );
+void   shadow_free( GLuint id );
+
+/* Context generation, bumped by gl_context_lost_reset when SDL_SetVideoMode has
+   destroyed the GL context (SDL 1.2 on Windows). Buffer handles created before
+   the bump belong to the dead context: FSReleaseRenderObject must not delete or
+   cache-evict them, because the same numeric ids may already name freshly created
+   buffers in the new context. */
+extern unsigned render_ctx_gen;
+void gl_context_lost_reset( void );
 
 #endif // GL != 1
 

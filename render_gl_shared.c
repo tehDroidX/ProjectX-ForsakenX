@@ -299,10 +299,10 @@ static const char *default_vertex_shader =
 	"{\n"
 	"    if (orthographic)\n"
 	"    {\n"
-// TODO - broken in GL 2
-#if 0
-	"        gl_Position = ortho_proj * tlpos;\n"
-#endif
+	// TLVERTEX.w is rhw (1/w), .z is a screen ZValue - feeding them raw divides
+	// in-world CPU-projected sprites/particles by rhw and blows them up. Match the
+	// GL1 path (glVertex2f(x,y) under gluOrtho2D): screen x/y only, z=0, w=1.
+	"        gl_Position = ortho_proj * vec4(tlpos.xy, 0.0, 1.0);\n"
 	"    }\n"
 	"    else\n"
 	"    {\n"
@@ -499,6 +499,10 @@ static bool set_defaults( void )
 	//CHECK_GL_ERRORS;
 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
 #else
+	gl2_load_functions();
+	// A bound VAO lets the driver cache vertex-array state instead of
+	// re-validating glVertexAttribPointer/Enable on every draw (huge GL2 win).
+	{ GLuint _vao = 0; glGenVertexArrays(1, &_vao); glBindVertexArray(_vao); }
 	if(!set_default_shaders()) return false;
 #endif
 	reset_cull();
@@ -572,6 +576,15 @@ void render_cleanup( render_info_t * info )
 
 bool render_mode_select( render_info_t * info )
 {
+#if GL > 1 && !SDL_VERSION_ATLEAST(2,0,0)
+	// SDL 1.2 on Windows recreates the GL context on SDL_SetVideoMode: every texture,
+	// VBO, VAO and shader program dies with it. Drop the CPU-side caches and stale
+	// handle bookkeeping first, then fall through to the full reinit: sdl_init_video
+	// recompiles the shaders via render_init, and the InitView run by RenderModeSelect
+	// reloads every texture and buffer - the same way the GL1 build recovers.
+	if ( info->ok_to_render )
+		gl_context_lost_reset();
+#endif
 	render_cleanup( info );
 	if(!sdl_init_video())
 		return false;
@@ -788,7 +801,7 @@ bool FSSetViewPort(render_viewport_t *view)
 void ortho_update ( GLuint current_program )
 {
 	MATRIX m;
-	float left, right, bottom, top, near, far;
+	float left, right, bottom, top, znear, zfar;
 	GLuint u_ortho_matrix;
 
 	if ( ortho_matrix_needs_update && ( u_ortho_matrix = glGetUniformLocation( current_program, "ortho_proj" ) ) >= 0 )
@@ -797,17 +810,17 @@ void ortho_update ( GLuint current_program )
 		right = render_info.ThisMode.w;
 		bottom = 0.0f;
 		top = render_info.ThisMode.h;
-		near = -1.0f;
-		far = 1.0f;
+		znear = -1.0f;
+		zfar = 1.0f;
 		memset(&m, 0, sizeof(MATRIX));
 		m._11 = 2.0f/(right-left);
 		// vertical flip ...
 		m._22 = (2.0f/(top-bottom)) * -1.0f;
-		m._33 = -2.0f/(far-near);
+		m._33 = -2.0f/(zfar-znear);
 		m._14 = -(right+left)/(right-left);
 		// ... and translate to make top left the origin
 		m._24 = -(top+bottom)/(top-bottom) + 2.0f;
-		m._34 = -(far+near)/(far-near);
+		m._34 = -(zfar+znear)/(zfar-znear);
 		m._44 = 1.0f;
 		glUniformMatrix4fv( u_ortho_matrix, 1, GL_TRUE, &m );
 		CHECK_GL_ERRORS;
@@ -838,9 +851,20 @@ bool mvp_needs_update;
 void mvp_update( GLuint current_program )
 {
 	MATRIX mvp;
-	GLuint u_mvp;
+	/* Cache the "mvp" uniform location per program. mvp_update runs once per moving
+	   object (every projectile/rocket calls FSSetWorld -> mvp_needs_update), and a
+	   glGetUniformLocation string lookup on this driver is very expensive - doing it
+	   per moving object is what made the framerate collapse as projectiles piled up.
+	   (GL1 uses glLoadMatrixf and never had this cost.) */
+	static GLuint mvp_prog = (GLuint)-1;
+	static GLint  u_mvp = -1;
+	if ( mvp_prog != current_program )
+	{
+		mvp_prog = current_program;
+		u_mvp = glGetUniformLocation( current_program, "mvp" );
+	}
 
-	if ( mvp_needs_update && ( u_mvp = glGetUniformLocation( current_program, "mvp" ) ) >= 0 )
+	if ( mvp_needs_update && u_mvp >= 0 )
 	{
 		MatrixMultiply( &world_matrix, &view_matrix, &mvp );
 		MatrixMultiply( &mvp,          &proj_matrix, &mvp );
@@ -920,6 +944,9 @@ LPVERTEXBUFFER _create_buffer( int size, GLenum type, GLenum gettype, GLenum usa
 	// Restore old binding
 	glBindBuffer( type, oldvbo );
 
+	// paired CPU shadow copy - game code reads/writes this, FSUnlock* uploads it
+	shadow_create( vbo, size );
+
 	CHECK_GL_ERRORS;
 
 	return (LPVERTEXBUFFER) vbo;
@@ -936,9 +963,222 @@ bool draw_line_object(RENDEROBJECT *renderObject){return draw_render_object(rend
 	#define delete_buffer(b) glDeleteBuffers( 1, b )
 #endif
 
+#if GL != 1
+/* ---------------------------------------------------------------------------
+ * VAO cache keyed by GL buffer handles (+ ortho flag).
+ *
+ * The VAO used to be stored in the RENDEROBJECT struct, but that struct is
+ * copied BY VALUE: transexe.c queues every transparent object with
+ *   TransExe[i].renderObject = *renderObject;
+ * The transparent effect models (explosions, rocket blasts, glows, scale FX,
+ * additive weapon effects) are ONLY ever drawn through that transient copy -
+ * their source group is never drawn directly, so its vao field stays 0. Every
+ * frame the pool is refilled (NumOfTransExe=0), the copy inherits vao==0,
+ * draw_render_object generates a fresh VAO into the throwaway copy, and next
+ * frame that handle is orphaned and never glDeleteVertexArrays'd. One leaked
+ * VAO per transparent effect per frame -> unbounded growth while firing ->
+ * driver slows to a crawl (GL1 is immune, it has no VAO code).
+ *
+ * Keying the VAO off the (stable) GL buffer handles instead means every copy of
+ * an object resolves to the SAME cached VAO, so nothing leaks and the per-object
+ * fast path is kept. Entries are evicted when their buffers are deleted
+ * (FSReleaseRenderObject), which also prevents a reused buffer id from hitting a
+ * stale VAO. Open addressing with tombstones so deletions don't break probe
+ * chains; the live set (buffers currently loaded) is a few hundred, far under
+ * the capacity. ------------------------------------------------------------ */
+
+#define VAO_CACHE_CAP 16384u        /* power of two */
+typedef struct { GLuint vbuf, nbuf, ibuf, vao; unsigned char ortho, state; } vao_cache_entry_t;
+/* state: 0 = empty, 1 = live, 2 = tombstone (deleted; keep probing past it) */
+static vao_cache_entry_t vao_cache[VAO_CACHE_CAP];
+
+static unsigned vao_cache_hash( GLuint v, GLuint n, GLuint ib, int o )
+{
+	unsigned h = v * 2654435761u;
+	h ^= n + 0x9e3779b9u + (h << 6) + (h >> 2);
+	h ^= ib + 0x9e3779b9u + (h << 6) + (h >> 2);
+	if ( o ) h ^= 0x85ebca6bu;
+	return h & (VAO_CACHE_CAP - 1u);
+}
+
+GLuint vao_cache_get( GLuint vbuf, GLuint nbuf, GLuint ibuf, int ortho, int *is_new )
+{
+	unsigned start = vao_cache_hash( vbuf, nbuf, ibuf, ortho );
+	unsigned char o = ortho ? 1u : 0u;
+	int first_free = -1;
+	unsigned probe;
+	for ( probe = 0; probe < VAO_CACHE_CAP; probe++ )
+	{
+		unsigned slot = ( start + probe ) & (VAO_CACHE_CAP - 1u);
+		vao_cache_entry_t *e = &vao_cache[slot];
+		if ( e->state == 1 && e->vbuf == vbuf && e->nbuf == nbuf && e->ibuf == ibuf && e->ortho == o )
+		{
+			*is_new = 0;
+			return e->vao;
+		}
+		if ( e->state == 2 && first_free < 0 )
+			first_free = (int) slot;
+		if ( e->state == 0 )
+		{
+			vao_cache_entry_t *t = &vao_cache[ first_free >= 0 ? (unsigned) first_free : slot ];
+			glGenVertexArrays( 1, &t->vao );
+			t->vbuf = vbuf; t->nbuf = nbuf; t->ibuf = ibuf; t->ortho = o; t->state = 1;
+			*is_new = 1;
+			return t->vao;
+		}
+	}
+	/* cache saturated (should never happen with a few hundred live buffers) */
+	{ GLuint vao = 0; glGenVertexArrays( 1, &vao ); *is_new = 1; return vao; }
+}
+
+void vao_cache_evict( GLuint vbuf, GLuint nbuf, GLuint ibuf )
+{
+	unsigned i;
+	for ( i = 0; i < VAO_CACHE_CAP; i++ )
+	{
+		vao_cache_entry_t *e = &vao_cache[i];
+		if ( e->state == 1 &&
+		     ( ( vbuf && e->vbuf == vbuf ) || ( nbuf && e->nbuf == nbuf ) || ( ibuf && e->ibuf == ibuf ) ) )
+		{
+			glDeleteVertexArrays( 1, &e->vao );
+			e->state = 2;   /* tombstone */
+			e->vbuf = e->nbuf = e->ibuf = 0; e->vao = 0;
+		}
+	}
+}
+
+/* ---------------------------------------------------------------------------
+ * CPU shadow copies, one per GL buffer (see render_gl_shared.h for the why).
+ * Same open-addressing scheme as the VAO cache. */
+#define SHADOW_CAP 16384u           /* power of two */
+typedef struct { GLuint id; void *ptr; int size; unsigned char state; } shadow_entry_t;
+static shadow_entry_t shadow_tab[SHADOW_CAP];
+
+static unsigned shadow_hash( GLuint id ) { return ( id * 2654435761u ) & (SHADOW_CAP - 1u); }
+
+void * shadow_create( GLuint id, int size )
+{
+	unsigned start = shadow_hash( id ), probe;
+	int first_free = -1;
+	for ( probe = 0; probe < SHADOW_CAP; probe++ )
+	{
+		unsigned slot = ( start + probe ) & (SHADOW_CAP - 1u);
+		shadow_entry_t *e = &shadow_tab[slot];
+		if ( e->state == 1 && e->id == id )
+		{	/* buffer id reused: replace */
+			free( e->ptr );
+			e->ptr = calloc( 1, (size_t) size );
+			e->size = size;
+			return e->ptr;
+		}
+		if ( e->state == 2 && first_free < 0 )
+			first_free = (int) slot;
+		if ( e->state == 0 )
+		{
+			shadow_entry_t *t = &shadow_tab[ first_free >= 0 ? (unsigned) first_free : slot ];
+			t->id = id;
+			t->ptr = calloc( 1, (size_t) size );
+			t->size = size;
+			t->state = 1;
+			return t->ptr;
+		}
+	}
+	return NULL; /* table saturated - cannot happen with a few hundred live buffers */
+}
+
+void * shadow_get( GLuint id, int * size )
+{
+	unsigned start = shadow_hash( id ), probe;
+	for ( probe = 0; probe < SHADOW_CAP; probe++ )
+	{
+		unsigned slot = ( start + probe ) & (SHADOW_CAP - 1u);
+		shadow_entry_t *e = &shadow_tab[slot];
+		if ( e->state == 1 && e->id == id )
+		{
+			if ( size ) *size = e->size;
+			return e->ptr;
+		}
+		if ( e->state == 0 )
+			return NULL;
+	}
+	return NULL;
+}
+
+void shadow_free( GLuint id )
+{
+	unsigned start = shadow_hash( id ), probe;
+	if ( !id ) return;
+	for ( probe = 0; probe < SHADOW_CAP; probe++ )
+	{
+		unsigned slot = ( start + probe ) & (SHADOW_CAP - 1u);
+		shadow_entry_t *e = &shadow_tab[slot];
+		if ( e->state == 1 && e->id == id )
+		{
+			free( e->ptr );
+			e->ptr = NULL; e->id = 0; e->size = 0;
+			e->state = 2;   /* tombstone */
+			return;
+		}
+		if ( e->state == 0 )
+			return;
+	}
+}
+
+/* Bumped when SDL_SetVideoMode has destroyed the GL context (SDL 1.2 on Windows).
+   FSCreate*Buffer stamps the current generation into the RENDEROBJECT. */
+unsigned render_ctx_gen = 1;
+
+/* The old context's GL objects are already gone, so no glDelete* calls here: just
+   drop every CPU-side cache tied to the dead names and bump the generation so
+   releases of old-context RENDEROBJECTs can't delete same-numbered buffers that
+   InitView has meanwhile created in the new context. Shader handle globals are
+   zeroed so set_default_shaders / update_shader_program don't glDelete stale
+   handles inside the fresh context either. */
+void gl_context_lost_reset( void )
+{
+	unsigned i;
+	for ( i = 0; i < SHADOW_CAP; i++ )
+	{
+		if ( shadow_tab[i].state == 1 && shadow_tab[i].ptr )
+			free( shadow_tab[i].ptr );
+	}
+	memset( shadow_tab, 0, sizeof(shadow_tab) );
+	memset( vao_cache, 0, sizeof(vao_cache) );
+	vertex_shader = 0;
+	fragment_shader = 0;
+	current_program = 0;
+	render_ctx_gen++;
+}
+#endif // GL != 1
+
 void FSReleaseRenderObject(RENDEROBJECT *renderObject)
 {
 	int i;
+#if GL != 1
+	if ( renderObject->ctx_gen != render_ctx_gen )
+	{
+		/* The buffers were created in a GL context that no longer exists (video
+		   mode change on SDL 1.2). Their numeric ids may already name freshly
+		   created buffers, so deleting or cache-evicting them would corrupt the
+		   new context - just forget the handles; the caches were already cleared
+		   by gl_context_lost_reset. */
+		renderObject->lpVertexBuffer = NULL;
+		renderObject->lpNormalBuffer = NULL;
+		renderObject->lpIndexBuffer = NULL;
+	}
+	else
+	{
+		/* Evict cached VAO(s) + shadow copies keyed off these buffers BEFORE the handles
+		   are freed below, so a later reused buffer id can't hit stale state. */
+		vao_cache_evict(
+			(GLuint)(size_t) renderObject->lpVertexBuffer,
+			(GLuint)(size_t) renderObject->lpNormalBuffer,
+			(GLuint)(size_t) renderObject->lpIndexBuffer );
+		shadow_free( (GLuint)(size_t) renderObject->lpVertexBuffer );
+		shadow_free( (GLuint)(size_t) renderObject->lpNormalBuffer );
+		shadow_free( (GLuint)(size_t) renderObject->lpIndexBuffer );
+	}
+#endif
 	if (renderObject->lpVertexBuffer)
 	{
 		delete_buffer( &renderObject->lpVertexBuffer );
